@@ -42,6 +42,9 @@ from ui.german_recruiter import (
 from ui.google_sheets_sync import (
     render_google_sheets_sync,
 )
+from ui.interview_coach import (
+    render_interview_coach,
+)
 from ui.job_input import (
     render_job_description_input,
 )
@@ -56,6 +59,9 @@ from ui.tracker_view import (
 )
 
 
+# ==================================================
+# LOGGING
+# ==================================================
 configure_logging()
 
 logger = get_logger(
@@ -63,6 +69,9 @@ logger = get_logger(
 )
 
 
+# ==================================================
+# STREAMLIT CONFIGURATION
+# ==================================================
 st.set_page_config(
     page_title="Job Match Agent",
     page_icon="📄",
@@ -70,11 +79,15 @@ st.set_page_config(
 )
 
 
+# ==================================================
+# HELPER FUNCTIONS
+# ==================================================
 def build_manual_extraction_details(
     method: str,
 ) -> dict:
     """
-    Build diagnostics for text that did not come from a file.
+    Build extraction diagnostics for text that did
+    not come from an uploaded document.
     """
 
     return {
@@ -266,6 +279,9 @@ def render_extraction_status(
         )
 
 
+# ==================================================
+# DATABASE INITIALIZATION
+# ==================================================
 try:
     create_applications_table()
 
@@ -290,6 +306,7 @@ except Exception as error:
     st.stop()
 
 
+# Log startup only once per Streamlit session.
 if not st.session_state.get(
     "application_start_logged",
     False,
@@ -306,6 +323,9 @@ if not st.session_state.get(
     ] = True
 
 
+# ==================================================
+# PAGE HEADER
+# ==================================================
 st.title(
     "Job Match Agent"
 )
@@ -314,8 +334,8 @@ st.write(
     "Analyse your CV against a job description, "
     "read scanned PDFs with OCR, import public job "
     "pages, receive local AI recommendations, "
-    "generate tailored application documents and "
-    "track your applications."
+    "generate tailored application documents, "
+    "prepare for interviews and track your applications."
 )
 
 
@@ -330,6 +350,9 @@ if saved_message:
     )
 
 
+# ==================================================
+# MAIN TABS
+# ==================================================
 (
     analysis_tab,
     tracker_tab,
@@ -676,7 +699,7 @@ with analysis_tab:
                 "analysis_imported_job_url"
             ] = imported_job_url
 
-            # Clear documents generated for an older analysis.
+            # Clear generated results from the previous analysis.
             keys_to_clear = [
                 "generated_cover_letter",
                 "cover_letter_warnings",
@@ -688,6 +711,7 @@ with analysis_tab:
                 "tailored_cv_txt_filename",
                 "tailored_cv_docx_filename",
                 "editable_tailored_cv",
+                "interview_coach_result",
             ]
 
             for key in keys_to_clear:
@@ -1046,7 +1070,25 @@ with analysis_tab:
         )
 
         # ------------------------------------------
-        # AI RECOMMENDATIONS
+        # AI INTERVIEW COACH
+        # ------------------------------------------
+        render_interview_coach(
+            cv_text=final_cv_text,
+            job_text=final_job_text,
+            extracted_job_details=(
+                extracted_job_details
+            ),
+            match_result=match_result,
+            category_match_result=(
+                category_match_result
+            ),
+            german_recruiter_report=(
+                german_recruiter_report
+            ),
+        )
+
+        # ------------------------------------------
+        # AI CV RECOMMENDATIONS
         # ------------------------------------------
         ai_recommendations_used = (
             st.session_state.get(
