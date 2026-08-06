@@ -104,6 +104,97 @@ def build_manual_extraction_details(
     }
 
 
+def reset_current_analysis() -> None:
+    """
+    Clear the current analysis workflow without deleting
+    saved applications, backups, logs or settings files.
+    """
+
+    exact_keys = {
+        # CV input widgets
+        "cv_input_method",
+        "cv_file",
+        "cv_text",
+
+        # Job-description input widgets
+        "job_input_method",
+        "job_file",
+        "job_text",
+        "public_job_url",
+        "import_public_job_url",
+        "clear_public_job_url",
+
+        # Imported job-page state
+        "imported_job_text",
+        "imported_job_url",
+        "imported_job_title",
+        "imported_job_confidence",
+        "imported_job_method",
+        "imported_job_warnings",
+        "imported_job_text_editor",
+
+        # Analysis results
+        "analysis_complete",
+        "analysis_source_method",
+        "analysis_imported_job_url",
+        "analysis_warnings",
+        "final_cv_text",
+        "final_job_text",
+        "cv_extraction_details",
+        "job_extraction_details",
+        "match_result",
+        "ats_result",
+        "job_match_result",
+        "category_match_result",
+        "german_recruiter_report",
+        "extracted_job_details",
+        "cv_recommendations",
+        "ai_extraction_used",
+        "ai_extraction_error",
+        "ai_recommendations_used",
+        "ai_recommendations_error",
+
+        # Generated documents and interview preparation
+        "generated_cover_letter",
+        "cover_letter_warnings",
+        "cover_letter_filename",
+        "editable_cover_letter",
+        "tailored_cv_text",
+        "tailored_cv_docx",
+        "tailored_cv_warnings",
+        "tailored_cv_txt_filename",
+        "tailored_cv_docx_filename",
+        "editable_tailored_cv",
+        "interview_coach_result",
+
+        # Messages and action controls for the active workflow
+        "application_saved_message",
+        "analyse_application_button",
+    }
+
+    key_prefixes = (
+        "new_",
+        "generate_",
+        "download_interview_",
+        "download_tailored_",
+        "download_cover_",
+    )
+
+    for key in list(st.session_state.keys()):
+        if key in exact_keys or key.startswith(key_prefixes):
+            st.session_state.pop(key, None)
+
+    log_event(
+        logger=logger,
+        message="Current analysis session reset.",
+    )
+
+    st.session_state["analysis_reset_message"] = (
+        "The current analysis was cleared. "
+        "Saved applications were not deleted."
+    )
+
+
 def format_ocr_languages(
     language_codes: str,
 ) -> str:
@@ -326,17 +417,49 @@ if not st.session_state.get(
 # ==================================================
 # PAGE HEADER
 # ==================================================
-st.title(
-    "Job Match Agent"
+header_col1, header_col2 = st.columns(
+    [4, 1]
 )
 
-st.write(
-    "Analyse your CV against a job description, "
-    "read scanned PDFs with OCR, import public job "
-    "pages, receive local AI recommendations, "
-    "generate tailored application documents, "
-    "prepare for interviews and track your applications."
+with header_col1:
+    st.title(
+        "Job Match Agent"
+    )
+
+    st.write(
+        "Analyse your CV against a job description, "
+        "read scanned PDFs with OCR, import public job "
+        "pages, receive local AI recommendations, "
+        "generate tailored application documents, "
+        "prepare for interviews and track your applications."
+    )
+
+with header_col2:
+    st.write("")
+    st.write("")
+
+    if st.button(
+        "Start New Analysis",
+        width="stretch",
+        key="reset_current_analysis_button",
+        help=(
+            "Clear the current CV, job description and generated "
+            "results. Saved applications remain in the tracker."
+        ),
+    ):
+        reset_current_analysis()
+        st.rerun()
+
+
+reset_message = st.session_state.pop(
+    "analysis_reset_message",
+    None,
 )
+
+if reset_message:
+    st.success(
+        reset_message
+    )
 
 
 saved_message = st.session_state.pop(
