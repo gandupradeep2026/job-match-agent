@@ -1,5 +1,6 @@
+from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any
 
 import fitz
 from docx import Document
@@ -33,9 +34,8 @@ def read_uploaded_file_bytes(
         file_bytes = uploaded_file.read()
 
         try:
-            uploaded_file.seek(
-                0
-            )
+            uploaded_file.seek(0)
+
         except Exception:
             pass
 
@@ -56,10 +56,16 @@ def extract_text_from_pdf_bytes(
     if not pdf_bytes:
         return ""
 
-    document = fitz.open(
-        stream=pdf_bytes,
-        filetype="pdf",
-    )
+    try:
+        document = fitz.open(
+            stream=pdf_bytes,
+            filetype="pdf",
+        )
+
+    except Exception as error:
+        raise ValueError(
+            "The uploaded PDF could not be opened."
+        ) from error
 
     try:
         page_texts = []
@@ -83,16 +89,23 @@ def extract_text_from_docx_bytes(
     docx_bytes: bytes,
 ) -> str:
     """
-    Extract text from a DOCX file.
+    Extract paragraph and table text from a DOCX file.
     """
 
-    from io import BytesIO
+    if not docx_bytes:
+        return ""
 
-    document = Document(
-        BytesIO(
-            docx_bytes
+    try:
+        document = Document(
+            BytesIO(
+                docx_bytes
+            )
         )
-    )
+
+    except Exception as error:
+        raise ValueError(
+            "The uploaded DOCX file could not be opened."
+        ) from error
 
     paragraphs = [
         paragraph.text.strip()
@@ -127,8 +140,11 @@ def extract_text_from_txt_bytes(
     text_bytes: bytes,
 ) -> str:
     """
-    Decode a TXT file.
+    Decode a TXT file using common encodings.
     """
+
+    if not text_bytes:
+        return ""
 
     for encoding in [
         "utf-8",
@@ -152,24 +168,32 @@ def extract_text_from_txt_bytes(
 
 def extract_pdf_text_with_fallback(
     pdf_bytes: bytes,
-) -> tuple[str, dict]:
+) -> tuple[str, dict[str, Any]]:
     """
-    Extract PDF text normally and use OCR when needed.
+    Extract PDF text directly and use OCR when needed.
     """
 
     direct_text = extract_text_from_pdf_bytes(
         pdf_bytes
     )
 
-    if len(
-        direct_text.strip()
-    ) >= MIN_DIRECT_PDF_TEXT_LENGTH:
+    if (
+        len(
+            direct_text.strip()
+        )
+        >= MIN_DIRECT_PDF_TEXT_LENGTH
+    ):
         return (
             direct_text,
             {
                 "method": "direct_pdf_text",
                 "ocr_used": False,
                 "warnings": [],
+                "page_count": 0,
+                "processed_pages": 0,
+                "failed_pages": [],
+                "languages": "",
+                "dpi": 0,
             },
         )
 
@@ -204,6 +228,24 @@ def extract_pdf_text_with_fallback(
                         0,
                     )
                 ),
+                "failed_pages": (
+                    ocr_result.get(
+                        "failed_pages",
+                        [],
+                    )
+                ),
+                "languages": (
+                    ocr_result.get(
+                        "languages",
+                        "eng+deu",
+                    )
+                ),
+                "dpi": (
+                    ocr_result.get(
+                        "dpi",
+                        0,
+                    )
+                ),
             },
         )
 
@@ -220,6 +262,11 @@ def extract_pdf_text_with_fallback(
                             f"{error}"
                         )
                     ],
+                    "page_count": 0,
+                    "processed_pages": 0,
+                    "failed_pages": [],
+                    "languages": "",
+                    "dpi": 0,
                 },
             )
 
@@ -230,13 +277,11 @@ def extract_pdf_text_with_fallback(
         ) from error
 
 
-def extract_document_text(
+def extract_document_text_with_details(
     uploaded_file,
-) -> str:
+) -> dict[str, Any]:
     """
-    Extract text from PDF, DOCX or TXT uploads.
-
-    Scanned PDFs automatically use OCR.
+    Extract document text and return extraction diagnostics.
     """
 
     if uploaded_file is None:
@@ -258,26 +303,90 @@ def extract_document_text(
         uploaded_file
     )
 
+    if not file_bytes:
+        raise ValueError(
+            "The uploaded file is empty."
+        )
+
     if file_extension == ".pdf":
-        extracted_text, _ = (
+        extracted_text, details = (
             extract_pdf_text_with_fallback(
                 file_bytes
             )
         )
 
-        return extracted_text
+        return {
+            "text": extracted_text,
+            "details": {
+                **details,
+                "file_type": "pdf",
+                "filename": filename,
+            },
+        }
 
     if file_extension == ".docx":
-        return extract_text_from_docx_bytes(
-            file_bytes
+        extracted_text = (
+            extract_text_from_docx_bytes(
+                file_bytes
+            )
         )
 
+        return {
+            "text": extracted_text,
+            "details": {
+                "method": "docx",
+                "ocr_used": False,
+                "warnings": [],
+                "file_type": "docx",
+                "filename": filename,
+                "page_count": 0,
+                "processed_pages": 0,
+                "failed_pages": [],
+                "languages": "",
+                "dpi": 0,
+            },
+        }
+
     if file_extension == ".txt":
-        return extract_text_from_txt_bytes(
-            file_bytes
+        extracted_text = (
+            extract_text_from_txt_bytes(
+                file_bytes
+            )
         )
+
+        return {
+            "text": extracted_text,
+            "details": {
+                "method": "txt",
+                "ocr_used": False,
+                "warnings": [],
+                "file_type": "txt",
+                "filename": filename,
+                "page_count": 0,
+                "processed_pages": 0,
+                "failed_pages": [],
+                "languages": "",
+                "dpi": 0,
+            },
+        }
 
     raise ValueError(
         "Unsupported file type. "
         "Upload a PDF, DOCX or TXT file."
     )
+
+
+def extract_document_text(
+    uploaded_file,
+) -> str:
+    """
+    Backward-compatible text-only extraction.
+    """
+
+    result = (
+        extract_document_text_with_details(
+            uploaded_file
+        )
+    )
+
+    return result["text"]

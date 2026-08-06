@@ -1,7 +1,11 @@
 import streamlit as st
 
-from parsers.cv_parser import extract_document_text
-from services.analysis_service import analyse_application
+from parsers.cv_parser import (
+    extract_document_text_with_details,
+)
+from services.analysis_service import (
+    analyse_application,
+)
 from services.job_tracker import (
     create_applications_table,
 )
@@ -66,6 +70,202 @@ st.set_page_config(
 )
 
 
+def build_manual_extraction_details(
+    method: str,
+) -> dict:
+    """
+    Build diagnostics for text that did not come from a file.
+    """
+
+    return {
+        "method": method,
+        "ocr_used": False,
+        "warnings": [],
+        "page_count": 0,
+        "processed_pages": 0,
+        "failed_pages": [],
+        "languages": "",
+        "dpi": 0,
+        "filename": "",
+        "file_type": "",
+    }
+
+
+def format_ocr_languages(
+    language_codes: str,
+) -> str:
+    """
+    Convert OCR language codes into readable labels.
+    """
+
+    language_labels = {
+        "eng": "English",
+        "deu": "German",
+        "osd": "Orientation detection",
+    }
+
+    codes = [
+        code.strip()
+        for code in language_codes.split(
+            "+"
+        )
+        if code.strip()
+    ]
+
+    readable_languages = [
+        language_labels.get(
+            code,
+            code,
+        )
+        for code in codes
+    ]
+
+    return ", ".join(
+        readable_languages
+    )
+
+
+def render_extraction_status(
+    label: str,
+    details: dict,
+) -> None:
+    """
+    Display document extraction information.
+    """
+
+    if not details:
+        st.caption(
+            f"{label}: No extraction details are available."
+        )
+
+        return
+
+    method = details.get(
+        "method",
+        "",
+    )
+
+    filename = details.get(
+        "filename",
+        "",
+    )
+
+    if filename:
+        st.write(
+            f"**File:** {filename}"
+        )
+
+    if details.get(
+        "ocr_used",
+        False,
+    ):
+        st.success(
+            f"{label}: Tesseract OCR was used "
+            "to read the scanned PDF."
+        )
+
+        processed_pages = details.get(
+            "processed_pages",
+            0,
+        )
+
+        total_pages = details.get(
+            "page_count",
+            0,
+        )
+
+        if total_pages:
+            st.write(
+                f"**Pages processed:** "
+                f"{processed_pages} of {total_pages}"
+            )
+
+        elif processed_pages:
+            st.write(
+                f"**Pages processed:** "
+                f"{processed_pages}"
+            )
+
+        language_codes = details.get(
+            "languages",
+            "",
+        )
+
+        if language_codes:
+            st.write(
+                f"**OCR languages:** "
+                f"{format_ocr_languages(language_codes)}"
+            )
+
+        dpi = details.get(
+            "dpi",
+            0,
+        )
+
+        if dpi:
+            st.write(
+                f"**OCR resolution:** {dpi} DPI"
+            )
+
+        failed_pages = details.get(
+            "failed_pages",
+            [],
+        )
+
+        if failed_pages:
+            with st.expander(
+                f"{label}: Show failed OCR pages"
+            ):
+                for failed_page in failed_pages:
+                    st.write(
+                        f"Page "
+                        f"{failed_page.get('page', '?')}: "
+                        f"{failed_page.get('error', '')}"
+                    )
+
+    elif method == "direct_pdf_text":
+        st.info(
+            f"{label}: Selectable PDF text "
+            "was extracted directly."
+        )
+
+    elif method == "docx":
+        st.info(
+            f"{label}: DOCX text was extracted."
+        )
+
+    elif method == "txt":
+        st.info(
+            f"{label}: TXT content was read."
+        )
+
+    elif method == "pasted_text":
+        st.info(
+            f"{label}: Text was pasted manually."
+        )
+
+    elif method == "imported_url":
+        st.info(
+            f"{label}: Text was imported from "
+            "a public job URL."
+        )
+
+    else:
+        st.info(
+            f"{label}: Text extraction completed."
+        )
+
+    warnings = details.get(
+        "warnings",
+        [],
+    ) or []
+
+    for warning in warnings:
+        st.warning(
+            f"{label}: {warning}"
+        )
+
+
 try:
     create_applications_table()
 
@@ -112,9 +312,10 @@ st.title(
 
 st.write(
     "Analyse your CV against a job description, "
-    "import public job pages, receive local AI "
-    "recommendations, generate tailored application "
-    "documents and track your applications."
+    "read scanned PDFs with OCR, import public job "
+    "pages, receive local AI recommendations, "
+    "generate tailored application documents and "
+    "track your applications."
 )
 
 
@@ -181,13 +382,19 @@ with analysis_tab:
             key="cv_file",
         )
 
+        st.caption(
+            "Scanned PDFs are read automatically "
+            "with English and German OCR."
+        )
+
     else:
         cv_text = st.text_area(
             "Paste your CV text",
             height=300,
             key="cv_text",
             placeholder=(
-                "Paste the complete text of your CV here..."
+                "Paste the complete text "
+                "of your CV here..."
             ),
         )
 
@@ -235,10 +442,25 @@ with analysis_tab:
 
                     st.stop()
 
-                final_cv_text = (
-                    extract_document_text(
-                        cv_file
+                with st.spinner(
+                    "Reading the CV document..."
+                ):
+                    cv_extraction_result = (
+                        extract_document_text_with_details(
+                            cv_file
+                        )
                     )
+
+                final_cv_text = (
+                    cv_extraction_result[
+                        "text"
+                    ]
+                )
+
+                cv_extraction_details = (
+                    cv_extraction_result[
+                        "details"
+                    ]
                 )
 
             else:
@@ -253,21 +475,51 @@ with analysis_tab:
 
                     st.stop()
 
+                cv_extraction_details = (
+                    build_manual_extraction_details(
+                        "pasted_text"
+                    )
+                )
+
+            if not final_cv_text.strip():
+                st.error(
+                    "No readable text was extracted "
+                    "from the CV."
+                )
+
+                st.stop()
+
             # --------------------------------------
             # READ JOB DESCRIPTION
             # --------------------------------------
             if job_input_method == "Upload document":
                 if job_file is None:
                     st.error(
-                        "Please upload the job description."
+                        "Please upload the "
+                        "job description."
                     )
 
                     st.stop()
 
-                final_job_text = (
-                    extract_document_text(
-                        job_file
+                with st.spinner(
+                    "Reading the job-description document..."
+                ):
+                    job_extraction_result = (
+                        extract_document_text_with_details(
+                            job_file
+                        )
                     )
+
+                final_job_text = (
+                    job_extraction_result[
+                        "text"
+                    ]
+                )
+
+                job_extraction_details = (
+                    job_extraction_result[
+                        "details"
+                    ]
                 )
 
             else:
@@ -292,6 +544,33 @@ with analysis_tab:
                         )
 
                     st.stop()
+
+                if (
+                    job_input_method
+                    == "Import public job URL"
+                ):
+                    job_extraction_method = (
+                        "imported_url"
+                    )
+
+                else:
+                    job_extraction_method = (
+                        "pasted_text"
+                    )
+
+                job_extraction_details = (
+                    build_manual_extraction_details(
+                        job_extraction_method
+                    )
+                )
+
+            if not final_job_text.strip():
+                st.error(
+                    "No readable text was extracted "
+                    "from the job description."
+                )
+
+                st.stop()
 
             # --------------------------------------
             # RUN COMPLETE ANALYSIS
@@ -378,6 +657,14 @@ with analysis_tab:
                 )
 
             st.session_state[
+                "cv_extraction_details"
+            ] = cv_extraction_details
+
+            st.session_state[
+                "job_extraction_details"
+            ] = job_extraction_details
+
+            st.session_state[
                 "analysis_complete"
             ] = True
 
@@ -425,6 +712,30 @@ with analysis_tab:
                 context={
                     "job_input_method": (
                         job_input_method
+                    ),
+                    "cv_extraction_method": (
+                        cv_extraction_details.get(
+                            "method",
+                            "",
+                        )
+                    ),
+                    "cv_ocr_used": (
+                        cv_extraction_details.get(
+                            "ocr_used",
+                            False,
+                        )
+                    ),
+                    "job_extraction_method": (
+                        job_extraction_details.get(
+                            "method",
+                            "",
+                        )
+                    ),
+                    "job_ocr_used": (
+                        job_extraction_details.get(
+                            "ocr_used",
+                            False,
+                        )
                     ),
                     "company": (
                         extracted_details.get(
@@ -590,9 +901,56 @@ with analysis_tab:
             )
         )
 
+        cv_extraction_details = (
+            st.session_state.get(
+                "cv_extraction_details",
+                {},
+            )
+            or {}
+        )
+
+        job_extraction_details = (
+            st.session_state.get(
+                "job_extraction_details",
+                {},
+            )
+            or {}
+        )
+
+        # ------------------------------------------
+        # DOCUMENT EXTRACTION STATUS
+        # ------------------------------------------
+        st.divider()
+
+        st.subheader(
+            "Document Extraction Status"
+        )
+
+        extraction_col1, extraction_col2 = (
+            st.columns(2)
+        )
+
+        with extraction_col1:
+            render_extraction_status(
+                label="CV",
+                details=(
+                    cv_extraction_details
+                ),
+            )
+
+        with extraction_col2:
+            render_extraction_status(
+                label="Job description",
+                details=(
+                    job_extraction_details
+                ),
+            )
+
         # ------------------------------------------
         # INPUT SOURCE STATUS
         # ------------------------------------------
+        st.divider()
+
         if analysis_source_method:
             st.info(
                 f"Job-description source: "
