@@ -71,6 +71,7 @@ def prepare_dashboard_dataframe(
         "status",
         "application_source",
         "next_follow_up_date",
+        "contact_email",
     ]
 
     for column in text_columns:
@@ -114,11 +115,244 @@ def prepare_dashboard_dataframe(
     return dataframe
 
 
-def render_main_metrics(
+def get_score_label(
+    score: float,
+) -> str:
+    """
+    Convert a numeric score into an easy-to-read label.
+    """
+
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Strong"
+    if score >= 55:
+        return "Moderate"
+    return "Needs work"
+
+
+def get_interview_chance_label(
+    dataframe: pd.DataFrame,
+) -> str:
+    """
+    Estimate a simple interview-readiness label from saved outcomes.
+    """
+
+    if dataframe.empty:
+        return "Not enough data"
+
+    average_match = float(
+        dataframe["overall_match_score"].mean()
+    )
+
+    interview_rate = safe_percentage(
+        int(
+            dataframe["status"].isin(
+                INTERVIEW_STATUSES
+            ).sum()
+        ),
+        len(dataframe),
+    )
+
+    if average_match >= 80 and interview_rate >= 25:
+        return "High"
+    if average_match >= 65 or interview_rate >= 10:
+        return "Medium"
+    return "Low"
+
+
+def calculate_follow_up_summary(
+    dataframe: pd.DataFrame,
+) -> dict:
+    """
+    Calculate overdue, due-today and upcoming follow-ups.
+    """
+
+    today = pd.Timestamp(
+        date.today()
+    )
+
+    seven_days_later = pd.Timestamp(
+        date.today()
+        + timedelta(days=7)
+    )
+
+    open_application_mask = (
+        ~dataframe["status"].isin(
+            CLOSED_STATUSES
+        )
+    )
+
+    has_follow_up_mask = (
+        dataframe[
+            "next_follow_up_parsed"
+        ].notna()
+    )
+
+    overdue_mask = (
+        open_application_mask
+        & has_follow_up_mask
+        & (
+            dataframe[
+                "next_follow_up_parsed"
+            ]
+            < today
+        )
+    )
+
+    due_today_mask = (
+        open_application_mask
+        & has_follow_up_mask
+        & (
+            dataframe[
+                "next_follow_up_parsed"
+            ]
+            == today
+        )
+    )
+
+    upcoming_mask = (
+        open_application_mask
+        & has_follow_up_mask
+        & (
+            dataframe[
+                "next_follow_up_parsed"
+            ]
+            > today
+        )
+        & (
+            dataframe[
+                "next_follow_up_parsed"
+            ]
+            <= seven_days_later
+        )
+    )
+
+    return {
+        "overdue": dataframe[
+            overdue_mask
+        ].copy(),
+        "due_today": dataframe[
+            due_today_mask
+        ].copy(),
+        "upcoming": dataframe[
+            upcoming_mask
+        ].copy(),
+    }
+
+
+def get_strongest_application(
+    dataframe: pd.DataFrame,
+) -> dict | None:
+    """
+    Return the highest-scoring application.
+    """
+
+    if dataframe.empty:
+        return None
+
+    row = dataframe.sort_values(
+        "overall_match_score",
+        ascending=False,
+    ).iloc[0]
+
+    return row.to_dict()
+
+
+def get_weakest_application(
+    dataframe: pd.DataFrame,
+) -> dict | None:
+    """
+    Return the lowest-scoring application.
+    """
+
+    if dataframe.empty:
+        return None
+
+    row = dataframe.sort_values(
+        "overall_match_score",
+        ascending=True,
+    ).iloc[0]
+
+    return row.to_dict()
+
+
+def build_next_action(
+    dataframe: pd.DataFrame,
+) -> str:
+    """
+    Generate one clear next action from current tracker data.
+    """
+
+    follow_up_summary = calculate_follow_up_summary(
+        dataframe
+    )
+
+    overdue = follow_up_summary["overdue"]
+    due_today = follow_up_summary["due_today"]
+
+    if not overdue.empty:
+        first = overdue.iloc[0]
+
+        return (
+            "Follow up with "
+            f"{first.get('company', 'an employer')} "
+            f"about the {first.get('job_title', 'role')} application."
+        )
+
+    if not due_today.empty:
+        first = due_today.iloc[0]
+
+        return (
+            "Complete today's follow-up for "
+            f"{first.get('company', 'an employer')}."
+        )
+
+    weak_applications = dataframe[
+        dataframe["overall_match_score"] < 65
+    ].sort_values(
+        "overall_match_score",
+        ascending=True,
+    )
+
+    if not weak_applications.empty:
+        first = weak_applications.iloc[0]
+
+        return (
+            "Review and strengthen the application for "
+            f"{first.get('company', 'the employer')} — "
+            f"{first.get('job_title', 'target role')}."
+        )
+
+    preparing = dataframe[
+        dataframe["status"].isin(
+            {
+                "Discovered",
+                "Analysed",
+                "Preparing",
+            }
+        )
+    ]
+
+    if not preparing.empty:
+        first = preparing.iloc[0]
+
+        return (
+            "Finish preparing and submit the application for "
+            f"{first.get('company', 'the employer')}."
+        )
+
+    return (
+        "Your tracker has no urgent issues. "
+        "Add a new target role or prepare for upcoming interviews."
+    )
+
+
+def render_professional_overview(
     dataframe: pd.DataFrame,
 ) -> None:
     """
-    Display the main application-performance metrics.
+    Render a concise executive-style summary.
     """
 
     total_applications = len(
@@ -143,59 +377,269 @@ def render_main_metrics(
         .sum()
     )
 
-    interview_rate = safe_percentage(
-        interview_count,
-        total_applications,
+    average_overall = round(
+        float(
+            dataframe[
+                "overall_match_score"
+            ].mean()
+        ),
+        1,
     )
 
-    offer_rate = safe_percentage(
-        offer_count,
-        total_applications,
+    average_ats = round(
+        float(
+            dataframe[
+                "ats_score"
+            ].mean()
+        ),
+        1,
     )
 
-    metric_row1_col1, metric_row1_col2, metric_row1_col3 = (
-        st.columns(3)
-    )
-
-    with metric_row1_col1:
-        st.metric(
-            "Total Applications",
-            total_applications,
+    interview_chance = (
+        get_interview_chance_label(
+            dataframe
         )
+    )
 
-    with metric_row1_col2:
+    st.subheader(
+        "Today's Summary"
+    )
+
+    metric_col1, metric_col2, metric_col3, metric_col4 = (
+        st.columns(4)
+    )
+
+    with metric_col1:
         st.metric(
             "Active Applications",
             active_count,
+            help=(
+                f"{total_applications} application(s) "
+                "are stored in total."
+            ),
         )
 
-    with metric_row1_col3:
+    with metric_col2:
+        st.metric(
+            "Average Match",
+            f"{average_overall}%",
+            get_score_label(
+                average_overall
+            ),
+        )
+
+    with metric_col3:
+        st.metric(
+            "Average ATS",
+            f"{average_ats}%",
+            get_score_label(
+                average_ats
+            ),
+        )
+
+    with metric_col4:
+        st.metric(
+            "Interview Outlook",
+            interview_chance,
+            help=(
+                "This is a simple estimate based on saved "
+                "scores and tracker outcomes, not a guarantee."
+            ),
+        )
+
+    outcome_col1, outcome_col2, outcome_col3 = (
+        st.columns(3)
+    )
+
+    with outcome_col1:
         st.metric(
             "Interviews",
             interview_count,
         )
 
-    metric_row2_col1, metric_row2_col2, metric_row2_col3 = (
-        st.columns(3)
-    )
-
-    with metric_row2_col1:
+    with outcome_col2:
         st.metric(
             "Offers",
             offer_count,
         )
 
-    with metric_row2_col2:
+    with outcome_col3:
         st.metric(
             "Interview Rate",
-            f"{interview_rate}%",
+            (
+                f"{safe_percentage(
+                    interview_count,
+                    total_applications,
+                )}%"
+            ),
         )
 
-    with metric_row2_col3:
-        st.metric(
-            "Offer Rate",
-            f"{offer_rate}%",
+
+def render_next_best_action(
+    dataframe: pd.DataFrame,
+) -> None:
+    """
+    Show one recommended action.
+    """
+
+    st.subheader(
+        "Next Best Action"
+    )
+
+    st.info(
+        build_next_action(
+            dataframe
         )
+    )
+
+
+def render_best_and_weakest(
+    dataframe: pd.DataFrame,
+) -> None:
+    """
+    Show strongest and weakest saved applications.
+    """
+
+    strongest = get_strongest_application(
+        dataframe
+    )
+
+    weakest = get_weakest_application(
+        dataframe
+    )
+
+    st.subheader(
+        "Application Priority"
+    )
+
+    strong_col, weak_col = st.columns(2)
+
+    with strong_col:
+        st.write(
+            "### Strongest application"
+        )
+
+        if strongest:
+            st.success(
+                f"**{strongest.get('company', '')} — "
+                f"{strongest.get('job_title', '')}**\n\n"
+                f"Overall match: "
+                f"{strongest.get('overall_match_score', 0):.1f}%\n\n"
+                f"Status: {strongest.get('status', '') or 'Not specified'}"
+            )
+        else:
+            st.caption(
+                "No application data is available."
+            )
+
+    with weak_col:
+        st.write(
+            "### Application needing attention"
+        )
+
+        if weakest:
+            st.warning(
+                f"**{weakest.get('company', '')} — "
+                f"{weakest.get('job_title', '')}**\n\n"
+                f"Overall match: "
+                f"{weakest.get('overall_match_score', 0):.1f}%\n\n"
+                f"Status: {weakest.get('status', '') or 'Not specified'}"
+            )
+        else:
+            st.caption(
+                "No application data is available."
+            )
+
+
+def render_follow_up_snapshot(
+    dataframe: pd.DataFrame,
+) -> None:
+    """
+    Show urgent follow-up information.
+    """
+
+    follow_up_summary = (
+        calculate_follow_up_summary(
+            dataframe
+        )
+    )
+
+    overdue = follow_up_summary[
+        "overdue"
+    ]
+
+    due_today = follow_up_summary[
+        "due_today"
+    ]
+
+    upcoming = follow_up_summary[
+        "upcoming"
+    ]
+
+    st.subheader(
+        "Follow-up Snapshot"
+    )
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric(
+            "Overdue",
+            len(overdue),
+        )
+
+    with col2:
+        st.metric(
+            "Due Today",
+            len(due_today),
+        )
+
+    with col3:
+        st.metric(
+            "Next 7 Days",
+            len(upcoming),
+        )
+
+    urgent = pd.concat(
+        [
+            overdue,
+            due_today,
+            upcoming,
+        ],
+        ignore_index=True,
+    )
+
+    if urgent.empty:
+        st.success(
+            "No follow-ups are currently due."
+        )
+        return
+
+    display_data = urgent[
+        [
+            "company",
+            "job_title",
+            "status",
+            "next_follow_up_date",
+        ]
+    ].copy()
+
+    display_data = display_data.rename(
+        columns={
+            "company": "Company",
+            "job_title": "Job Title",
+            "status": "Status",
+            "next_follow_up_date": (
+                "Follow-up Date"
+            ),
+        }
+    )
+
+    st.dataframe(
+        display_data,
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def render_average_scores(
@@ -210,23 +654,29 @@ def render_average_scores(
     )
 
     average_skill = round(
-        dataframe[
-            "skill_match_score"
-        ].mean(),
+        float(
+            dataframe[
+                "skill_match_score"
+            ].mean()
+        ),
         1,
     )
 
     average_ats = round(
-        dataframe[
-            "ats_score"
-        ].mean(),
+        float(
+            dataframe[
+                "ats_score"
+            ].mean()
+        ),
         1,
     )
 
     average_overall = round(
-        dataframe[
-            "overall_match_score"
-        ].mean(),
+        float(
+            dataframe[
+                "overall_match_score"
+            ].mean()
+        ),
         1,
     )
 
@@ -444,208 +894,6 @@ def render_average_match_by_status(
     )
 
 
-def calculate_follow_up_summary(
-    dataframe: pd.DataFrame,
-) -> dict:
-    """
-    Calculate overdue, due-today and upcoming follow-ups.
-    """
-
-    today = pd.Timestamp(
-        date.today()
-    )
-
-    seven_days_later = pd.Timestamp(
-        date.today()
-        + timedelta(days=7)
-    )
-
-    open_application_mask = (
-        ~dataframe["status"].isin(
-            CLOSED_STATUSES
-        )
-    )
-
-    has_follow_up_mask = (
-        dataframe[
-            "next_follow_up_parsed"
-        ].notna()
-    )
-
-    overdue_mask = (
-        open_application_mask
-        & has_follow_up_mask
-        & (
-            dataframe[
-                "next_follow_up_parsed"
-            ]
-            < today
-        )
-    )
-
-    due_today_mask = (
-        open_application_mask
-        & has_follow_up_mask
-        & (
-            dataframe[
-                "next_follow_up_parsed"
-            ]
-            == today
-        )
-    )
-
-    upcoming_mask = (
-        open_application_mask
-        & has_follow_up_mask
-        & (
-            dataframe[
-                "next_follow_up_parsed"
-            ]
-            > today
-        )
-        & (
-            dataframe[
-                "next_follow_up_parsed"
-            ]
-            <= seven_days_later
-        )
-    )
-
-    return {
-        "overdue": dataframe[
-            overdue_mask
-        ].copy(),
-        "due_today": dataframe[
-            due_today_mask
-        ].copy(),
-        "upcoming": dataframe[
-            upcoming_mask
-        ].copy(),
-    }
-
-
-def render_follow_up_dashboard(
-    dataframe: pd.DataFrame,
-) -> None:
-    """
-    Display follow-up metrics and action lists.
-    """
-
-    st.subheader(
-        "Follow-up Overview"
-    )
-
-    follow_up_summary = (
-        calculate_follow_up_summary(
-            dataframe
-        )
-    )
-
-    overdue = follow_up_summary[
-        "overdue"
-    ]
-
-    due_today = follow_up_summary[
-        "due_today"
-    ]
-
-    upcoming = follow_up_summary[
-        "upcoming"
-    ]
-
-    follow_col1, follow_col2, follow_col3 = (
-        st.columns(3)
-    )
-
-    with follow_col1:
-        st.metric(
-            "Overdue",
-            len(overdue),
-        )
-
-    with follow_col2:
-        st.metric(
-            "Due Today",
-            len(due_today),
-        )
-
-    with follow_col3:
-        st.metric(
-            "Next 7 Days",
-            len(upcoming),
-        )
-
-    if overdue.empty and due_today.empty and upcoming.empty:
-        st.info(
-            "No follow-up actions are currently scheduled."
-        )
-        return
-
-    if not overdue.empty:
-        with st.expander(
-            "Overdue Follow-ups",
-            expanded=True,
-        ):
-            display_follow_up_table(
-                overdue
-            )
-
-    if not due_today.empty:
-        with st.expander(
-            "Follow-ups Due Today",
-            expanded=True,
-        ):
-            display_follow_up_table(
-                due_today
-            )
-
-    if not upcoming.empty:
-        with st.expander(
-            "Upcoming Follow-ups",
-        ):
-            display_follow_up_table(
-                upcoming
-            )
-
-
-def display_follow_up_table(
-    dataframe: pd.DataFrame,
-) -> None:
-    """
-    Display a compact follow-up action table.
-    """
-
-    display_data = dataframe[
-        [
-            "company",
-            "job_title",
-            "status",
-            "next_follow_up_date",
-            "contact_email",
-        ]
-    ].copy()
-
-    display_data = display_data.rename(
-        columns={
-            "company": "Company",
-            "job_title": "Job Title",
-            "status": "Status",
-            "next_follow_up_date": (
-                "Follow-up Date"
-            ),
-            "contact_email": (
-                "Contact Email"
-            ),
-        }
-    )
-
-    st.dataframe(
-        display_data,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
 def render_top_match_applications(
     dataframe: pd.DataFrame,
 ) -> None:
@@ -728,41 +976,41 @@ def render_dashboard_filters(
     Display dashboard filters and return filtered data.
     """
 
-    st.subheader(
-        "Dashboard Filters"
-    )
+    with st.expander(
+        "Dashboard Filters",
+        expanded=False,
+    ):
+        filter_col1, filter_col2 = st.columns(2)
 
-    filter_col1, filter_col2 = st.columns(2)
-
-    status_options = sorted(
-        status
-        for status in dataframe[
-            "status"
-        ].unique()
-        if status
-    )
-
-    source_options = sorted(
-        source
-        for source in dataframe[
-            "application_source"
-        ].unique()
-        if source
-    )
-
-    with filter_col1:
-        selected_statuses = st.multiselect(
-            "Filter by status",
-            options=status_options,
-            key="dashboard_status_filter",
+        status_options = sorted(
+            status
+            for status in dataframe[
+                "status"
+            ].unique()
+            if status
         )
 
-    with filter_col2:
-        selected_sources = st.multiselect(
-            "Filter by source",
-            options=source_options,
-            key="dashboard_source_filter",
+        source_options = sorted(
+            source
+            for source in dataframe[
+                "application_source"
+            ].unique()
+            if source
         )
+
+        with filter_col1:
+            selected_statuses = st.multiselect(
+                "Filter by status",
+                options=status_options,
+                key="dashboard_status_filter",
+            )
+
+        with filter_col2:
+            selected_sources = st.multiselect(
+                "Filter by source",
+                options=source_options,
+                key="dashboard_source_filter",
+            )
 
     filtered_dataframe = dataframe.copy()
 
@@ -793,16 +1041,16 @@ def render_dashboard_filters(
 
 def render_dashboard() -> None:
     """
-    Render the full application analytics dashboard.
+    Render the professional application dashboard.
     """
 
     st.header(
-        "Application Analytics Dashboard"
+        "Job Search Command Center"
     )
 
     st.caption(
-        "The dashboard uses the applications stored "
-        "in your local SQLite tracker."
+        "A clear summary of your applications, scores, "
+        "follow-ups and next actions."
     )
 
     applications = get_all_applications()
@@ -831,13 +1079,25 @@ def render_dashboard() -> None:
         )
         return
 
-    st.write(
-        f"Showing analytics for "
-        f"{len(filtered_dataframe)} of "
-        f"{len(dataframe)} application(s)."
+    render_professional_overview(
+        filtered_dataframe
     )
 
-    render_main_metrics(
+    st.divider()
+
+    render_next_best_action(
+        filtered_dataframe
+    )
+
+    st.divider()
+
+    render_best_and_weakest(
+        filtered_dataframe
+    )
+
+    st.divider()
+
+    render_follow_up_snapshot(
         filtered_dataframe
     )
 
@@ -874,12 +1134,6 @@ def render_dashboard() -> None:
         render_average_match_by_status(
             filtered_dataframe
         )
-
-    st.divider()
-
-    render_follow_up_dashboard(
-        filtered_dataframe
-    )
 
     st.divider()
 
