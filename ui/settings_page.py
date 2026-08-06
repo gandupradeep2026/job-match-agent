@@ -12,6 +12,9 @@ from services.settings_service import (
     save_ollama_model,
     test_ollama_connection,
 )
+from ui.log_viewer import (
+    render_log_viewer,
+)
 
 
 def format_file_size(
@@ -36,7 +39,7 @@ def format_file_size(
 
 def render_ollama_settings() -> None:
     """
-    Display Ollama settings and health controls.
+    Display Ollama model settings and health controls.
     """
 
     st.subheader(
@@ -108,7 +111,7 @@ def render_ollama_settings() -> None:
     with button_col1:
         if st.button(
             "Save Model Setting",
-            use_container_width=True,
+            width="stretch",
             key="save_ollama_setting",
         ):
             try:
@@ -122,8 +125,7 @@ def render_ollama_settings() -> None:
 
             except Exception as error:
                 st.error(
-                    "The model setting could "
-                    "not be saved."
+                    "The model setting could not be saved."
                 )
 
                 st.code(
@@ -133,7 +135,7 @@ def render_ollama_settings() -> None:
     with button_col2:
         if st.button(
             "Test Ollama",
-            use_container_width=True,
+            width="stretch",
             key="test_ollama_settings",
         ):
             with st.spinner(
@@ -275,7 +277,7 @@ def render_database_health() -> None:
 
 def render_google_health() -> None:
     """
-    Display Google Sheets configuration status.
+    Display Google Sheets configuration and health.
     """
 
     st.subheader(
@@ -284,7 +286,7 @@ def render_google_health() -> None:
 
     if st.button(
         "Test Google Sheets",
-        use_container_width=True,
+        width="stretch",
         key="settings_test_google",
     ):
         with st.spinner(
@@ -417,7 +419,7 @@ def render_file_health() -> None:
 
 def render_python_information() -> None:
     """
-    Display environment and Python information.
+    Display Python and operating-system information.
     """
 
     st.subheader(
@@ -469,10 +471,11 @@ def render_python_information() -> None:
 
 def render_complete_health_check() -> None:
     """
-    Display one-click complete health-check controls.
+    Display complete system-health controls.
     """
 
     st.divider()
+
     st.subheader(
         "Complete System Test"
     )
@@ -480,7 +483,7 @@ def render_complete_health_check() -> None:
     if st.button(
         "Run Complete Health Check",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         key="run_complete_health_check",
     ):
         with st.spinner(
@@ -511,8 +514,7 @@ def render_complete_health_check() -> None:
 
     else:
         st.error(
-            "One or more essential systems "
-            "need attention."
+            "One or more essential systems need attention."
         )
 
     health_col1, health_col2, health_col3 = (
@@ -588,7 +590,7 @@ def render_complete_health_check() -> None:
             "job_match_agent_health_report.json"
         ),
         mime="application/json",
-        use_container_width=True,
+        width="stretch",
         key="download_health_report",
     )
 
@@ -603,7 +605,7 @@ def render_complete_health_check() -> None:
 
 def render_settings_page() -> None:
     """
-    Render the complete settings and health page.
+    Render settings, system health and log controls.
     """
 
     st.header(
@@ -611,15 +613,18 @@ def render_settings_page() -> None:
     )
 
     st.caption(
-        "Configure the local AI model and verify "
-        "that the application's services are working."
+        "Configure the local AI model, test application "
+        "services and inspect technical diagnostic logs."
     )
 
-    settings_tab, health_tab = st.tabs(
-        [
-            "Settings",
-            "System Health",
-        ]
+    settings_tab, health_tab, logs_tab = (
+        st.tabs(
+            [
+                "Settings",
+                "System Health",
+                "Logs",
+            ]
+        )
     )
 
     with settings_tab:
@@ -652,3 +657,6 @@ def render_settings_page() -> None:
             render_python_information()
 
         render_complete_health_check()
+
+    with logs_tab:
+        render_log_viewer()

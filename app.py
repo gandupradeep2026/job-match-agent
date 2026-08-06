@@ -5,6 +5,12 @@ from services.analysis_service import analyse_application
 from services.job_tracker import (
     create_applications_table,
 )
+from services.logging_service import (
+    configure_logging,
+    get_logger,
+    log_event,
+    log_exception,
+)
 from ui.ai_recommendations import (
     render_ai_recommendations,
 )
@@ -46,6 +52,13 @@ from ui.tracker_view import (
 )
 
 
+configure_logging()
+
+logger = get_logger(
+    "app"
+)
+
+
 st.set_page_config(
     page_title="Job Match Agent",
     page_icon="📄",
@@ -53,7 +66,44 @@ st.set_page_config(
 )
 
 
-create_applications_table()
+try:
+    create_applications_table()
+
+except Exception as error:
+    log_exception(
+        logger=logger,
+        error=error,
+        message=(
+            "Database initialization failed."
+        ),
+    )
+
+    st.error(
+        "The local application database "
+        "could not be initialized."
+    )
+
+    st.code(
+        f"{type(error).__name__}: {error}"
+    )
+
+    st.stop()
+
+
+if not st.session_state.get(
+    "application_start_logged",
+    False,
+):
+    log_event(
+        logger=logger,
+        message=(
+            "Streamlit application started."
+        ),
+    )
+
+    st.session_state[
+        "application_start_logged"
+    ] = True
 
 
 st.title(
@@ -144,7 +194,9 @@ with analysis_tab:
     # ==================================================
     # JOB DESCRIPTION INPUT
     # ==================================================
-    job_input = render_job_description_input()
+    job_input = (
+        render_job_description_input()
+    )
 
     job_input_method = job_input[
         "method"
@@ -229,12 +281,14 @@ with analysis_tab:
                         == "Import public job URL"
                     ):
                         st.error(
-                            "Please import a public job page first."
+                            "Please import a public "
+                            "job page first."
                         )
 
                     else:
                         st.error(
-                            "Please paste the job description."
+                            "Please paste the "
+                            "job description."
                         )
 
                     st.stop()
@@ -335,7 +389,7 @@ with analysis_tab:
                 "analysis_imported_job_url"
             ] = imported_job_url
 
-            # Clear files generated for an older analysis.
+            # Clear documents generated for an older analysis.
             keys_to_clear = [
                 "generated_cover_letter",
                 "cover_letter_warnings",
@@ -355,13 +409,85 @@ with analysis_tab:
                     None,
                 )
 
+            extracted_details = (
+                analysis_result.get(
+                    "extracted_job_details",
+                    {},
+                )
+                or {}
+            )
+
+            log_event(
+                logger=logger,
+                message=(
+                    "Application analysis completed."
+                ),
+                context={
+                    "job_input_method": (
+                        job_input_method
+                    ),
+                    "company": (
+                        extracted_details.get(
+                            "company",
+                            "",
+                        )
+                    ),
+                    "job_title": (
+                        extracted_details.get(
+                            "job_title",
+                            "",
+                        )
+                    ),
+                    "ai_extraction_used": (
+                        analysis_result.get(
+                            "ai_extraction_used",
+                            False,
+                        )
+                    ),
+                    "ai_recommendations_used": (
+                        analysis_result.get(
+                            "ai_recommendations_used",
+                            False,
+                        )
+                    ),
+                },
+            )
+
             st.success(
                 "Analysis completed successfully."
             )
 
         except Exception as error:
+            log_exception(
+                logger=logger,
+                error=error,
+                message=(
+                    "Application analysis failed."
+                ),
+                context={
+                    "cv_input_method": (
+                        cv_input_method
+                    ),
+                    "job_input_method": (
+                        job_input_method
+                    ),
+                    "imported_job_url": (
+                        imported_job_url
+                    ),
+                },
+            )
+
             st.error(
-                f"Something went wrong: {error}"
+                "The analysis could not be completed."
+            )
+
+            st.code(
+                f"{type(error).__name__}: {error}"
+            )
+
+            st.info(
+                "More diagnostic information was saved "
+                "in Settings → Logs."
             )
 
     # ==================================================
@@ -638,42 +764,144 @@ with analysis_tab:
     # ==================================================
     st.divider()
 
-    render_tracker(
-        title="Saved Applications",
-        show_heading=True,
-        component_key="analysis_page",
-    )
+    try:
+        render_tracker(
+            title="Saved Applications",
+            show_heading=True,
+            component_key="analysis_page",
+        )
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Saved applications could not be rendered."
+            ),
+            context={
+                "component": "analysis_page",
+            },
+        )
+
+        st.error(
+            "Saved applications could not be displayed."
+        )
 
 
 # ==================================================
 # TRACKER TAB
 # ==================================================
 with tracker_tab:
-    render_tracker(
-        title="Application Tracker",
-        show_heading=True,
-        component_key="tracker_tab",
-    )
+    try:
+        render_tracker(
+            title="Application Tracker",
+            show_heading=True,
+            component_key="tracker_tab",
+        )
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Application tracker could not be rendered."
+            ),
+            context={
+                "component": "tracker_tab",
+            },
+        )
+
+        st.error(
+            "The application tracker could not be displayed."
+        )
+
+        st.info(
+            "See Settings → Logs for diagnostic information."
+        )
 
 
 # ==================================================
 # DASHBOARD TAB
 # ==================================================
 with dashboard_tab:
-    render_dashboard()
+    try:
+        render_dashboard()
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Dashboard rendering failed."
+            ),
+            context={
+                "component": "dashboard",
+            },
+        )
+
+        st.error(
+            "The dashboard could not be displayed."
+        )
+
+        st.info(
+            "See Settings → Logs for diagnostic information."
+        )
 
 
 # ==================================================
 # GOOGLE SHEETS TAB
 # ==================================================
 with cloud_tab:
-    render_google_sheets_sync(
-        component_key="google_tab",
-    )
+    try:
+        render_google_sheets_sync(
+            component_key="google_tab",
+        )
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Google Sheets interface failed."
+            ),
+            context={
+                "component": "google_sheets",
+            },
+        )
+
+        st.error(
+            "The Google Sheets interface "
+            "could not be displayed."
+        )
+
+        st.info(
+            "See Settings → Logs for diagnostic information."
+        )
 
 
 # ==================================================
 # SETTINGS TAB
 # ==================================================
 with settings_tab:
-    render_settings_page()
+    try:
+        render_settings_page()
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Settings page rendering failed."
+            ),
+            context={
+                "component": "settings",
+            },
+        )
+
+        st.error(
+            "The settings page could not be displayed."
+        )
+
+        st.code(
+            f"{type(error).__name__}: {error}"
+        )
