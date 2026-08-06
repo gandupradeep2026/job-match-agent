@@ -11,6 +11,9 @@ from services.local_ai_service import (
     generate_cv_recommendations,
 )
 from services.matcher import calculate_keyword_match
+from services.resume_doctor import (
+    generate_resume_doctor_report,
+)
 
 
 def merge_job_details(
@@ -225,6 +228,20 @@ def analyse_application(
             "not be generated."
         )
 
+    # --------------------------------------------------
+    # RESUME DOCTOR REPORT
+    # --------------------------------------------------
+    resume_doctor_report = (
+        generate_resume_doctor_report(
+            ats_result=ats_result,
+            match_result=keyword_match_result,
+            cv_recommendations=cv_recommendations,
+            german_recruiter_report=(
+                german_recruiter_report
+            ),
+        )
+    )
+
     return {
         "cv_text": cleaned_cv_text,
         "job_text": cleaned_job_text,
@@ -240,6 +257,9 @@ def analyse_application(
         ),
         "german_recruiter_report": (
             german_recruiter_report
+        ),
+        "resume_doctor_report": (
+            resume_doctor_report
         ),
         "extracted_job_details": (
             extracted_job_details

@@ -48,9 +48,6 @@ from ui.interview_coach import (
 from ui.job_input import (
     render_job_description_input,
 )
-from ui.resume_doctor import (
-    render_resume_doctor,
-)
 from ui.job_insights import (
     render_job_insights,
 )
@@ -150,7 +147,6 @@ def reset_current_analysis() -> None:
         "job_match_result",
         "category_match_result",
         "german_recruiter_report",
-        "resume_doctor_report",
         "extracted_job_details",
         "cv_recommendations",
         "ai_extraction_used",
@@ -774,9 +770,6 @@ with analysis_tab:
                 "german_recruiter_report": (
                     "german_recruiter_report"
                 ),
-                "resume_doctor_report": (
-                    "resume_doctor_report"
-                ),
                 "extracted_job_details": (
                     "extracted_job_details"
                 ),
@@ -1001,14 +994,6 @@ with analysis_tab:
             or {}
         )
 
-        resume_doctor_report = (
-            st.session_state.get(
-                "resume_doctor_report",
-                {},
-            )
-            or {}
-        )
-
         final_cv_text = (
             st.session_state.get(
                 "final_cv_text",
@@ -1205,13 +1190,6 @@ with analysis_tab:
             report=(
                 german_recruiter_report
             )
-        )
-
-        # ------------------------------------------
-        # AI RESUME DOCTOR
-        # ------------------------------------------
-        render_resume_doctor(
-            report=resume_doctor_report
         )
 
         # ------------------------------------------
