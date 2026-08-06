@@ -51,6 +51,9 @@ from ui.job_input import (
 from ui.job_insights import (
     render_job_insights,
 )
+from ui.recruiter_decision import (
+    render_recruiter_decision,
+)
 from ui.settings_page import (
     render_settings_page,
 )
@@ -647,6 +650,9 @@ with analysis_tab:
                 "german_recruiter_report": (
                     "german_recruiter_report"
                 ),
+                "recruiter_decision": (
+                    "recruiter_decision"
+                ),
                 "extracted_job_details": (
                     "extracted_job_details"
                 ),
@@ -871,6 +877,14 @@ with analysis_tab:
             or {}
         )
 
+        recruiter_decision = (
+            st.session_state.get(
+                "recruiter_decision",
+                {},
+            )
+            or {}
+        )
+
         final_cv_text = (
             st.session_state.get(
                 "final_cv_text",
@@ -1049,6 +1063,13 @@ with analysis_tab:
             job_match_result=job_match_result,
             cv_text=final_cv_text,
             job_text=final_job_text,
+        )
+
+        # ------------------------------------------
+        # AI RECRUITER DECISION
+        # ------------------------------------------
+        render_recruiter_decision(
+            report=recruiter_decision
         )
 
         # ------------------------------------------

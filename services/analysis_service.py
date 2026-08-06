@@ -11,6 +11,9 @@ from services.local_ai_service import (
     generate_cv_recommendations,
 )
 from services.matcher import calculate_keyword_match
+from services.recruiter_decision import (
+    generate_recruiter_decision,
+)
 
 
 def merge_job_details(
@@ -44,6 +47,22 @@ def empty_recommendations() -> dict:
     """
     Return the default recommendation structure.
     """
+
+
+    # --------------------------------------------------
+    # RECRUITER DECISION SIMULATOR
+    # --------------------------------------------------
+    recruiter_decision = (
+        generate_recruiter_decision(
+            ats_result=ats_result,
+            match_result=keyword_match_result,
+            job_match_result=job_match_result,
+            cv_recommendations=cv_recommendations,
+            extracted_job_details=(
+                extracted_job_details
+            ),
+        )
+    )
 
     return {
         "overall_summary": "",
@@ -240,6 +259,9 @@ def analyse_application(
         ),
         "german_recruiter_report": (
             german_recruiter_report
+        ),
+        "recruiter_decision": (
+            recruiter_decision
         ),
         "extracted_job_details": (
             extracted_job_details
