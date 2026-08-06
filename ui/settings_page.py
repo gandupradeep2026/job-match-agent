@@ -12,6 +12,9 @@ from services.settings_service import (
     save_ollama_model,
     test_ollama_connection,
 )
+from ui.backup_restore import (
+    render_backup_restore,
+)
 from ui.log_viewer import (
     render_log_viewer,
 )
@@ -21,7 +24,7 @@ def format_file_size(
     size_bytes: int,
 ) -> str:
     """
-    Convert a byte count into a readable value.
+    Convert bytes into a readable value.
     """
 
     if size_bytes < 1024:
@@ -157,66 +160,68 @@ def render_ollama_settings() -> None:
         )
     )
 
-    if ollama_result:
-        if ollama_result[
-            "success"
-        ]:
-            st.success(
-                ollama_result[
-                    "message"
-                ]
-            )
+    if not ollama_result:
+        return
+
+    if ollama_result[
+        "success"
+    ]:
+        st.success(
+            ollama_result[
+                "message"
+            ]
+        )
+
+    else:
+        st.error(
+            ollama_result[
+                "message"
+            ]
+        )
+
+    installed = ollama_result.get(
+        "installed_models",
+        [],
+    )
+
+    running = ollama_result.get(
+        "running_models",
+        [],
+    )
+
+    with st.expander(
+        "Ollama model information"
+    ):
+        st.write(
+            "**Installed models:**"
+        )
+
+        if installed:
+            for model in installed:
+                st.write(
+                    f"- {model}"
+                )
 
         else:
-            st.error(
-                ollama_result[
-                    "message"
-                ]
+            st.write(
+                "No installed models were detected."
             )
 
-        installed = ollama_result.get(
-            "installed_models",
-            [],
+        st.write(
+            "**Models currently loaded:**"
         )
 
-        running = ollama_result.get(
-            "running_models",
-            [],
-        )
-
-        with st.expander(
-            "Ollama model information"
-        ):
-            st.write(
-                "**Installed models:**"
-            )
-
-            if installed:
-                for model in installed:
-                    st.write(
-                        f"- {model}"
-                    )
-
-            else:
+        if running:
+            for model in running:
                 st.write(
-                    "No installed models were detected."
+                    f"- {model}"
                 )
 
+        else:
             st.write(
-                "**Models currently loaded:**"
+                "No model is currently loaded. "
+                "This is normal when Ollama is idle."
             )
-
-            if running:
-                for model in running:
-                    st.write(
-                        f"- {model}"
-                    )
-
-            else:
-                st.write(
-                    "No model is currently loaded. "
-                    "This is normal when Ollama is idle."
-                )
 
 
 def render_database_health() -> None:
@@ -605,7 +610,7 @@ def render_complete_health_check() -> None:
 
 def render_settings_page() -> None:
     """
-    Render settings, system health and log controls.
+    Render settings, health, backups and logs.
     """
 
     st.header(
@@ -613,18 +618,22 @@ def render_settings_page() -> None:
     )
 
     st.caption(
-        "Configure the local AI model, test application "
-        "services and inspect technical diagnostic logs."
+        "Configure the local AI model, test services, "
+        "manage database backups and inspect logs."
     )
 
-    settings_tab, health_tab, logs_tab = (
-        st.tabs(
-            [
-                "Settings",
-                "System Health",
-                "Logs",
-            ]
-        )
+    (
+        settings_tab,
+        health_tab,
+        backup_tab,
+        logs_tab,
+    ) = st.tabs(
+        [
+            "Settings",
+            "System Health",
+            "Backup and Restore",
+            "Logs",
+        ]
     )
 
     with settings_tab:
@@ -634,7 +643,7 @@ def render_settings_page() -> None:
 
         st.info(
             "Model changes are saved in the .env file. "
-            "New AI requests will use the selected model."
+            "New AI requests use the selected model."
         )
 
     with health_tab:
@@ -657,6 +666,9 @@ def render_settings_page() -> None:
             render_python_information()
 
         render_complete_health_check()
+
+    with backup_tab:
+        render_backup_restore()
 
     with logs_tab:
         render_log_viewer()

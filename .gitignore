@@ -14,6 +14,10 @@ __pycache__/
 
 # Local database
 database/*.db
+
+# Local database backups
+backups/
+
 # Application logs
 logs/
 *.log
