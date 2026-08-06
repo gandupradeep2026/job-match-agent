@@ -32,6 +32,9 @@ from ui.german_recruiter import (
 from ui.google_sheets_sync import (
     render_google_sheets_sync,
 )
+from ui.job_input import (
+    render_job_description_input,
+)
 from ui.job_insights import (
     render_job_insights,
 )
@@ -59,9 +62,9 @@ st.title(
 
 st.write(
     "Analyse your CV against a job description, "
-    "receive local AI recommendations, generate "
-    "tailored application documents and track "
-    "your applications."
+    "import public job pages, receive local AI "
+    "recommendations, generate tailored application "
+    "documents and track your applications."
 )
 
 
@@ -97,6 +100,9 @@ if saved_message:
 # ANALYSIS TAB
 # ==================================================
 with analysis_tab:
+    # ==================================================
+    # CV INPUT
+    # ==================================================
     st.subheader(
         "1. Provide your CV"
     )
@@ -128,60 +134,42 @@ with analysis_tab:
     else:
         cv_text = st.text_area(
             "Paste your CV text",
-            height=250,
+            height=300,
             key="cv_text",
             placeholder=(
-                "Paste the complete text "
-                "of your CV here..."
+                "Paste the complete text of your CV here..."
             ),
         )
 
-    st.subheader(
-        "2. Provide the job description"
-    )
+    # ==================================================
+    # JOB DESCRIPTION INPUT
+    # ==================================================
+    job_input = render_job_description_input()
 
-    job_input_method = st.radio(
-        (
-            "Choose how you want to provide "
-            "the job description:"
-        ),
-        [
-            "Upload document",
-            "Paste as text",
-        ],
-        horizontal=True,
-        key="job_input_method",
-    )
+    job_input_method = job_input[
+        "method"
+    ]
 
-    job_file = None
-    job_text = ""
+    job_file = job_input[
+        "file"
+    ]
 
-    if job_input_method == "Upload document":
-        job_file = st.file_uploader(
-            "Upload the job description",
-            type=[
-                "pdf",
-                "docx",
-                "txt",
-            ],
-            key="job_file",
-        )
+    job_text = job_input[
+        "text"
+    ]
 
-    else:
-        job_text = st.text_area(
-            "Paste the job description",
-            height=250,
-            key="job_text",
-            placeholder=(
-                "Paste the complete job "
-                "description here..."
-            ),
-        )
+    imported_job_url = job_input[
+        "job_url"
+    ]
 
+    # ==================================================
+    # ANALYSE BUTTON
+    # ==================================================
     if st.button(
         "Analyse",
         type="primary",
-        use_container_width=True,
+        width="stretch",
+        key="analyse_application_button",
     ):
         try:
             # --------------------------------------
@@ -192,6 +180,7 @@ with analysis_tab:
                     st.error(
                         "Please upload your CV."
                     )
+
                     st.stop()
 
                 final_cv_text = (
@@ -209,6 +198,7 @@ with analysis_tab:
                     st.error(
                         "Please paste your CV text."
                     )
+
                     st.stop()
 
             # --------------------------------------
@@ -217,9 +207,9 @@ with analysis_tab:
             if job_input_method == "Upload document":
                 if job_file is None:
                     st.error(
-                        "Please upload the "
-                        "job description."
+                        "Please upload the job description."
                     )
+
                     st.stop()
 
                 final_job_text = (
@@ -234,10 +224,19 @@ with analysis_tab:
                 )
 
                 if not final_job_text:
-                    st.error(
-                        "Please paste the "
-                        "job description."
-                    )
+                    if (
+                        job_input_method
+                        == "Import public job URL"
+                    ):
+                        st.error(
+                            "Please import a public job page first."
+                        )
+
+                    else:
+                        st.error(
+                            "Please paste the job description."
+                        )
+
                     st.stop()
 
             # --------------------------------------
@@ -254,6 +253,26 @@ with analysis_tab:
                         job_text=final_job_text,
                     )
                 )
+
+            # --------------------------------------
+            # PRESERVE IMPORTED JOB URL
+            # --------------------------------------
+            if imported_job_url:
+                extracted_details = (
+                    analysis_result.get(
+                        "extracted_job_details",
+                        {},
+                    )
+                    or {}
+                )
+
+                extracted_details[
+                    "job_url"
+                ] = imported_job_url
+
+                analysis_result[
+                    "extracted_job_details"
+                ] = extracted_details
 
             # --------------------------------------
             # STORE ANALYSIS RESULTS
@@ -308,7 +327,15 @@ with analysis_tab:
                 "analysis_complete"
             ] = True
 
-            # Clear documents generated for an older analysis.
+            st.session_state[
+                "analysis_source_method"
+            ] = job_input_method
+
+            st.session_state[
+                "analysis_imported_job_url"
+            ] = imported_job_url
+
+            # Clear files generated for an older analysis.
             keys_to_clear = [
                 "generated_cover_letter",
                 "cover_letter_warnings",
@@ -337,9 +364,9 @@ with analysis_tab:
                 f"Something went wrong: {error}"
             )
 
-    # ----------------------------------------------
+    # ==================================================
     # DISPLAY ANALYSIS
-    # ----------------------------------------------
+    # ==================================================
     if st.session_state.get(
         "analysis_complete"
     ):
@@ -348,6 +375,7 @@ with analysis_tab:
                 "match_result",
                 {},
             )
+            or {}
         )
 
         ats_result = (
@@ -355,6 +383,7 @@ with analysis_tab:
                 "ats_result",
                 {},
             )
+            or {}
         )
 
         job_match_result = (
@@ -362,6 +391,7 @@ with analysis_tab:
                 "job_match_result",
                 {},
             )
+            or {}
         )
 
         category_match_result = (
@@ -369,6 +399,7 @@ with analysis_tab:
                 "category_match_result",
                 {},
             )
+            or {}
         )
 
         german_recruiter_report = (
@@ -376,6 +407,7 @@ with analysis_tab:
                 "german_recruiter_report",
                 {},
             )
+            or {}
         )
 
         final_cv_text = (
@@ -383,6 +415,7 @@ with analysis_tab:
                 "final_cv_text",
                 "",
             )
+            or ""
         )
 
         final_job_text = (
@@ -390,6 +423,7 @@ with analysis_tab:
                 "final_job_text",
                 "",
             )
+            or ""
         )
 
         extracted_job_details = (
@@ -397,6 +431,7 @@ with analysis_tab:
                 "extracted_job_details",
                 {},
             )
+            or {}
         )
 
         cv_recommendations = (
@@ -404,6 +439,7 @@ with analysis_tab:
                 "cv_recommendations",
                 {},
             )
+            or {}
         )
 
         analysis_warnings = (
@@ -413,6 +449,35 @@ with analysis_tab:
             )
             or []
         )
+
+        analysis_source_method = (
+            st.session_state.get(
+                "analysis_source_method",
+                "",
+            )
+        )
+
+        analysis_imported_job_url = (
+            st.session_state.get(
+                "analysis_imported_job_url",
+                "",
+            )
+        )
+
+        # ------------------------------------------
+        # INPUT SOURCE STATUS
+        # ------------------------------------------
+        if analysis_source_method:
+            st.info(
+                f"Job-description source: "
+                f"{analysis_source_method}"
+            )
+
+        if analysis_imported_job_url:
+            st.write(
+                f"**Imported job URL:** "
+                f"{analysis_imported_job_url}"
+            )
 
         # ------------------------------------------
         # WARNINGS
@@ -468,7 +533,7 @@ with analysis_tab:
         )
 
         # ------------------------------------------
-        # GENERAL SCORES
+        # GENERAL ANALYSIS
         # ------------------------------------------
         render_analysis_results(
             match_result=match_result,
@@ -568,9 +633,9 @@ with analysis_tab:
             job_match_result=job_match_result,
         )
 
-    # ----------------------------------------------
+    # ==================================================
     # SAVED APPLICATIONS
-    # ----------------------------------------------
+    # ==================================================
     st.divider()
 
     render_tracker(

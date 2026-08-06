@@ -1,14 +1,18 @@
+import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 
-DATABASE_PATH = Path("database/applications.db")
+DATABASE_PATH = Path(
+    "database/applications.db"
+)
 
 
 def get_connection() -> sqlite3.Connection:
     """
-    Open a connection to the SQLite database.
+    Open a SQLite database connection.
     """
 
     DATABASE_PATH.parent.mkdir(
@@ -25,11 +29,101 @@ def get_connection() -> sqlite3.Connection:
     return connection
 
 
+def normalize_comparison_text(
+    value: str | None,
+) -> str:
+    """
+    Normalize text for duplicate comparison.
+    """
+
+    if not value:
+        return ""
+
+    normalized = value.lower().strip()
+
+    normalized = re.sub(
+        r"[^\wäöüß]+",
+        " ",
+        normalized,
+        flags=re.UNICODE,
+    )
+
+    normalized = re.sub(
+        r"\s+",
+        " ",
+        normalized,
+    )
+
+    return normalized.strip()
+
+
+def normalize_job_url(
+    value: str | None,
+) -> str:
+    """
+    Normalize a job URL for duplicate comparison.
+
+    Tracking parameters and URL fragments are ignored.
+    """
+
+    if not value:
+        return ""
+
+    cleaned_url = value.strip()
+
+    if not cleaned_url:
+        return ""
+
+    if "://" not in cleaned_url:
+        cleaned_url = (
+            f"https://{cleaned_url}"
+        )
+
+    try:
+        parsed = urlsplit(
+            cleaned_url
+        )
+
+    except ValueError:
+        return cleaned_url.lower()
+
+    hostname = (
+        parsed.hostname
+        or ""
+    ).lower()
+
+    if hostname.startswith(
+        "www."
+    ):
+        hostname = hostname[4:]
+
+    port = parsed.port
+
+    if port:
+        hostname = (
+            f"{hostname}:{port}"
+        )
+
+    normalized_path = (
+        parsed.path.rstrip("/")
+    )
+
+    return urlunsplit(
+        (
+            parsed.scheme.lower(),
+            hostname,
+            normalized_path,
+            "",
+            "",
+        )
+    )
+
+
 def get_existing_columns(
     connection: sqlite3.Connection,
 ) -> set[str]:
     """
-    Return all existing columns from the applications table.
+    Return column names from the applications table.
     """
 
     rows = connection.execute(
@@ -46,10 +140,7 @@ def add_missing_columns(
     connection: sqlite3.Connection,
 ) -> None:
     """
-    Add newer fields to an existing database.
-
-    This lets older databases continue working without
-    deleting existing application records.
+    Add newer fields to an existing applications table.
     """
 
     existing_columns = get_existing_columns(
@@ -67,8 +158,13 @@ def add_missing_columns(
         "cover_letter_version": "TEXT",
     }
 
-    for column_name, column_type in new_columns.items():
-        if column_name not in existing_columns:
+    for column_name, column_type in (
+        new_columns.items()
+    ):
+        if (
+            column_name
+            not in existing_columns
+        ):
             connection.execute(
                 f"""
                 ALTER TABLE applications
@@ -81,7 +177,7 @@ def add_missing_columns(
 
 def create_applications_table() -> None:
     """
-    Create the applications table if it does not exist.
+    Create the applications table when required.
     """
 
     connection = get_connection()
@@ -125,6 +221,277 @@ def create_applications_table() -> None:
         connection.close()
 
 
+def get_all_applications() -> list[dict]:
+    """
+    Return all saved applications, newest first.
+    """
+
+    connection = get_connection()
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            ORDER BY id DESC
+            """
+        ).fetchall()
+
+        return [
+            dict(row)
+            for row in rows
+        ]
+
+    finally:
+        connection.close()
+
+
+def get_application_by_id(
+    application_id: int,
+) -> dict | None:
+    """
+    Return one application by ID.
+    """
+
+    connection = get_connection()
+
+    try:
+        row = connection.execute(
+            """
+            SELECT *
+            FROM applications
+            WHERE id = ?
+            """,
+            (
+                application_id,
+            ),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row)
+
+    finally:
+        connection.close()
+
+
+def calculate_duplicate_confidence(
+    existing_application: dict,
+    company: str,
+    job_title: str,
+    location: str,
+    job_url: str,
+) -> dict:
+    """
+    Compare one saved application with a new application.
+    """
+
+    new_company = (
+        normalize_comparison_text(
+            company
+        )
+    )
+
+    new_job_title = (
+        normalize_comparison_text(
+            job_title
+        )
+    )
+
+    new_location = (
+        normalize_comparison_text(
+            location
+        )
+    )
+
+    new_job_url = normalize_job_url(
+        job_url
+    )
+
+    existing_company = (
+        normalize_comparison_text(
+            existing_application.get(
+                "company"
+            )
+        )
+    )
+
+    existing_job_title = (
+        normalize_comparison_text(
+            existing_application.get(
+                "job_title"
+            )
+        )
+    )
+
+    existing_location = (
+        normalize_comparison_text(
+            existing_application.get(
+                "location"
+            )
+        )
+    )
+
+    existing_job_url = (
+        normalize_job_url(
+            existing_application.get(
+                "job_url"
+            )
+        )
+    )
+
+    url_match = bool(
+        new_job_url
+        and existing_job_url
+        and new_job_url
+        == existing_job_url
+    )
+
+    company_match = bool(
+        new_company
+        and existing_company
+        and new_company
+        == existing_company
+    )
+
+    title_match = bool(
+        new_job_title
+        and existing_job_title
+        and new_job_title
+        == existing_job_title
+    )
+
+    location_match = bool(
+        new_location
+        and existing_location
+        and new_location
+        == existing_location
+    )
+
+    reasons = []
+
+    if url_match:
+        reasons.append(
+            "Same job URL"
+        )
+
+    if company_match:
+        reasons.append(
+            "Same company"
+        )
+
+    if title_match:
+        reasons.append(
+            "Same job title"
+        )
+
+    if location_match:
+        reasons.append(
+            "Same location"
+        )
+
+    if url_match:
+        confidence = "high"
+
+    elif (
+        company_match
+        and title_match
+        and location_match
+    ):
+        confidence = "high"
+
+    elif (
+        company_match
+        and title_match
+    ):
+        confidence = "medium"
+
+    else:
+        confidence = "none"
+
+    return {
+        "is_duplicate": (
+            confidence
+            in {
+                "high",
+                "medium",
+            }
+        ),
+        "confidence": confidence,
+        "reasons": reasons,
+    }
+
+
+def find_possible_duplicates(
+    company: str,
+    job_title: str,
+    location: str = "",
+    job_url: str = "",
+    exclude_application_id: int | None = None,
+) -> list[dict]:
+    """
+    Find saved applications that may represent the same job.
+    """
+
+    applications = get_all_applications()
+
+    duplicate_results = []
+
+    for application in applications:
+        if (
+            exclude_application_id
+            is not None
+            and application.get(
+                "id"
+            )
+            == exclude_application_id
+        ):
+            continue
+
+        comparison = (
+            calculate_duplicate_confidence(
+                existing_application=(
+                    application
+                ),
+                company=company,
+                job_title=job_title,
+                location=location,
+                job_url=job_url,
+            )
+        )
+
+        if not comparison[
+            "is_duplicate"
+        ]:
+            continue
+
+        duplicate_results.append(
+            {
+                "application": (
+                    application
+                ),
+                "confidence": comparison[
+                    "confidence"
+                ],
+                "reasons": comparison[
+                    "reasons"
+                ],
+            }
+        )
+
+    duplicate_results.sort(
+        key=lambda item: (
+            0
+            if item["confidence"]
+            == "high"
+            else 1
+        )
+    )
+
+    return duplicate_results
+
+
 def save_application(
     company: str,
     job_title: str,
@@ -151,8 +518,10 @@ def save_application(
 
     connection = get_connection()
 
-    current_time = datetime.now().isoformat(
-        timespec="seconds"
+    current_time = (
+        datetime.now().isoformat(
+            timespec="seconds"
+        )
     )
 
     try:
@@ -211,60 +580,9 @@ def save_application(
 
         connection.commit()
 
-        return int(cursor.lastrowid)
-
-    finally:
-        connection.close()
-
-
-def get_all_applications() -> list[dict]:
-    """
-    Return all applications, newest first.
-    """
-
-    connection = get_connection()
-
-    try:
-        rows = connection.execute(
-            """
-            SELECT *
-            FROM applications
-            ORDER BY id DESC
-            """
-        ).fetchall()
-
-        return [
-            dict(row)
-            for row in rows
-        ]
-
-    finally:
-        connection.close()
-
-
-def get_application_by_id(
-    application_id: int,
-) -> dict | None:
-    """
-    Return one application using its database ID.
-    """
-
-    connection = get_connection()
-
-    try:
-        row = connection.execute(
-            """
-            SELECT *
-            FROM applications
-            WHERE id = ?
-            """,
-            (application_id,),
-        ).fetchone()
-
-        if row is None:
-            return None
-
-        return dict(row)
+        return int(
+            cursor.lastrowid
+        )
 
     finally:
         connection.close()
@@ -342,7 +660,10 @@ def update_application(
 
         connection.commit()
 
-        return cursor.rowcount > 0
+        return (
+            cursor.rowcount
+            > 0
+        )
 
     finally:
         connection.close()
@@ -363,12 +684,17 @@ def delete_application(
             DELETE FROM applications
             WHERE id = ?
             """,
-            (application_id,),
+            (
+                application_id,
+            ),
         )
 
         connection.commit()
 
-        return cursor.rowcount > 0
+        return (
+            cursor.rowcount
+            > 0
+        )
 
     finally:
         connection.close()
