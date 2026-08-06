@@ -1,6 +1,13 @@
 import streamlit as st
 
 
+PRIORITY_LABELS = {
+    "high": "High priority",
+    "medium": "Medium priority",
+    "low": "Low priority",
+}
+
+
 def render_score_summary(
     match_result: dict,
     ats_result: dict,
@@ -101,6 +108,231 @@ def render_score_breakdown(
 
         st.write(
             f"{profile_score}% × 10% weighting"
+        )
+
+
+def render_cv_diagnostics(
+    match_result: dict,
+    ats_result: dict,
+) -> None:
+    """
+    Explain ATS point losses and job-specific skill gaps.
+    """
+
+    st.divider()
+    st.header("CV Diagnostics")
+
+    score = ats_result.get(
+        "score",
+        0,
+    )
+
+    max_score = ats_result.get(
+        "max_score",
+        100,
+    )
+
+    points_lost = ats_result.get(
+        "points_lost",
+        max(max_score - score, 0),
+    )
+
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+
+    with metric_col1:
+        st.metric(
+            "ATS points earned",
+            f"{score} / {max_score}",
+        )
+
+    with metric_col2:
+        st.metric(
+            "ATS points lost",
+            points_lost,
+        )
+
+    with metric_col3:
+        missing_skills = match_result.get(
+            "missing_keywords",
+            [],
+        )
+
+        st.metric(
+            "Missing job skills",
+            len(missing_skills),
+        )
+
+    if score >= 85:
+        st.success(
+            "The CV has strong basic ATS readability. "
+            "Focus mainly on job-specific tailoring."
+        )
+    elif score >= 70:
+        st.info(
+            "The CV is readable, but several improvements "
+            "could strengthen it."
+        )
+    elif score >= 50:
+        st.warning(
+            "The CV has important ATS weaknesses that "
+            "should be fixed before applying."
+        )
+    else:
+        st.error(
+            "The CV has major readability or structure problems."
+        )
+
+    failed_checks = ats_result.get(
+        "failed_checks",
+        [],
+    )
+
+    if not failed_checks:
+        failed_checks = [
+            check
+            for check in ats_result.get(
+                "checks",
+                [],
+            )
+            if check.get(
+                "lost_points",
+                0,
+            ) > 0
+            or not check.get(
+                "passed",
+                False,
+            )
+        ]
+
+    st.subheader("Why ATS points were lost")
+
+    if failed_checks:
+        for check in failed_checks:
+            lost_points = check.get(
+                "lost_points",
+                check.get(
+                    "max_points",
+                    0,
+                )
+                - check.get(
+                    "points",
+                    0,
+                ),
+            )
+
+            priority = check.get(
+                "priority",
+                "medium",
+            )
+
+            label = PRIORITY_LABELS.get(
+                priority,
+                "Priority",
+            )
+
+            with st.expander(
+                f"{label}: {check.get('name', 'ATS check')} "
+                f"(-{lost_points} points)"
+            ):
+                st.write(
+                    f"**Problem:** "
+                    f"{check.get('message', '')}"
+                )
+
+                recommendation = check.get(
+                    "recommendation",
+                    "",
+                )
+
+                if recommendation:
+                    st.write(
+                        f"**How to improve:** "
+                        f"{recommendation}"
+                    )
+    else:
+        st.success(
+            "No basic ATS points were lost."
+        )
+
+    st.subheader("Job-specific skill gaps")
+
+    missing_skills = match_result.get(
+        "missing_keywords",
+        [],
+    )
+
+    frequency_data = match_result.get(
+        "job_skill_frequency",
+        {},
+    )
+
+    if missing_skills:
+        sorted_missing_skills = sorted(
+            missing_skills,
+            key=lambda skill: frequency_data.get(
+                skill,
+                1,
+            ),
+            reverse=True,
+        )
+
+        for skill in sorted_missing_skills:
+            frequency = frequency_data.get(
+                skill,
+                1,
+            )
+
+            st.error(
+                f"✗ {skill} — mentioned "
+                f"{frequency} time(s) in the job description"
+            )
+
+        st.warning(
+            "Only add a missing skill if you genuinely have it. "
+            "Otherwise, describe it as a learning goal or leave it out."
+        )
+    else:
+        st.success(
+            "No recognised job-specific skills are missing."
+        )
+
+    st.subheader("Recommended action order")
+
+    action_items = []
+
+    for check in failed_checks:
+        recommendation = check.get(
+            "recommendation",
+            "",
+        ).strip()
+
+        if (
+            recommendation
+            and recommendation
+            not in action_items
+        ):
+            action_items.append(
+                recommendation
+            )
+
+    if missing_skills:
+        action_items.append(
+            "Review the missing job skills and add only those "
+            "that are genuinely supported by your experience."
+        )
+
+    if not action_items:
+        action_items.append(
+            "Tailor the professional summary and strongest "
+            "experience bullets to this specific job."
+        )
+
+    for index, action in enumerate(
+        action_items[:8],
+        start=1,
+    ):
+        st.write(
+            f"**{index}.** {action}"
         )
 
 
@@ -230,15 +462,29 @@ def render_ats_details(
     )
 
     for check in checks:
+        max_points = check.get(
+            "max_points",
+            check.get(
+                "points",
+                0,
+            ),
+        )
+
         if check["passed"]:
             st.success(
                 f"✓ {check['name']} "
-                f"(+{check['points']} points): "
+                f"(+{check['points']} of {max_points} points): "
                 f"{check['message']}"
             )
         else:
+            lost_points = check.get(
+                "lost_points",
+                max_points,
+            )
+
             st.error(
-                f"✗ {check['name']}: "
+                f"✗ {check['name']} "
+                f"(-{lost_points} points): "
                 f"{check['message']}"
             )
 
@@ -327,6 +573,11 @@ def render_analysis_results(
         match_result=match_result,
         ats_result=ats_result,
         job_match_result=job_match_result,
+    )
+
+    render_cv_diagnostics(
+        match_result=match_result,
+        ats_result=ats_result,
     )
 
     render_skill_details(
