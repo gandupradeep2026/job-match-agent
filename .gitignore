@@ -1,0 +1,16 @@
+# Secret files
+.env
+
+# Google credentials
+credentials/
+credentials/google-service-account.json
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local database
+database/*.db
