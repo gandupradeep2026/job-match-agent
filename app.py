@@ -1,4 +1,7 @@
 import streamlit as st
+from ui.job_portals import (
+    render_job_portals,
+)
 
 from parsers.cv_parser import (
     extract_document_text_with_details,
@@ -357,6 +360,7 @@ if saved_message:
     analysis_tab,
     tracker_tab,
     dashboard_tab,
+    job_portals_tab,
     cloud_tab,
     settings_tab,
 ) = st.tabs(
@@ -364,6 +368,7 @@ if saved_message:
         "Analyse Job",
         "Application Tracker",
         "Dashboard",
+        "Job Portals",
         "Google Sheets",
         "Settings",
     ]
@@ -1245,6 +1250,19 @@ with dashboard_tab:
 
         st.info(
             "See Settings → Logs for diagnostic information."
+        )
+
+# ==================================================
+# JOB PORTALS TAB
+# ==================================================
+
+with job_portals_tab:
+    try:
+        render_job_portals()
+
+    except Exception as error:
+        st.error(
+            "The Job Portals page could not be displayed."
         )
 
 

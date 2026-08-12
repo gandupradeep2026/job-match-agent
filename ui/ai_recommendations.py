@@ -1,5 +1,9 @@
 import streamlit as st
 
+from services.cv_section_improver import (
+    create_section_improvement,
+)
+
 
 IMPORTANCE_LABELS = {
     "high": "High importance",
@@ -240,4 +244,210 @@ def render_ai_recommendations(
             "suggested_bullets",
             [],
         )
+    )
+
+def render_cv_section_improver() -> None:
+    """
+    Render one-click CV section improvement.
+    """
+
+    st.divider()
+    st.header(
+        "One-Click CV Section Improver"
+    )
+
+    st.caption(
+        "Paste one section from your CV, improve it for the current job, "
+        "and compare the original with the revised version. "
+        "Nothing is overwritten automatically."
+    )
+
+    cv_text = st.session_state.get(
+        "final_cv_text",
+        "",
+    ) or ""
+
+    job_text = st.session_state.get(
+        "final_job_text",
+        "",
+    ) or ""
+
+    if not cv_text or not job_text:
+        st.info(
+            "Run a CV and job analysis first."
+        )
+        return
+
+    section_col, language_col = st.columns(2)
+
+    with section_col:
+        section_name = st.selectbox(
+            "CV section",
+            [
+                "Professional Summary",
+                "Skills",
+                "Experience",
+                "Projects",
+            ],
+            key="section_improver_name",
+        )
+
+    with language_col:
+        language = st.selectbox(
+            "Output language",
+            [
+                "English",
+                "German",
+            ],
+            key="section_improver_language",
+        )
+
+    section_text = st.text_area(
+        "Paste the exact section you want to improve",
+        height=220,
+        key="section_improver_input",
+        placeholder=(
+            "Paste only the selected section from your CV here..."
+        ),
+    )
+
+    if st.button(
+        "Improve This Section",
+        type="primary",
+        use_container_width=True,
+        key="improve_cv_section_button",
+    ):
+        if not section_text.strip():
+            st.error(
+                "Please paste the section text first."
+            )
+        else:
+            try:
+                with st.spinner(
+                    "Improving the selected CV section..."
+                ):
+                    result = create_section_improvement(
+                        cv_text=cv_text,
+                        job_text=job_text,
+                        section_name=section_name,
+                        section_text=section_text,
+                        language=language,
+                    )
+
+                st.session_state[
+                    "cv_section_improvement_result"
+                ] = result
+
+                st.success(
+                    "Section improvement completed."
+                )
+
+            except Exception as error:
+                st.error(
+                    "Section improvement failed."
+                )
+                st.code(
+                    f"{type(error).__name__}: {error}"
+                )
+
+    result = st.session_state.get(
+        "cv_section_improvement_result",
+        {},
+    ) or {}
+
+    if not result:
+        return
+
+    warnings = result.get(
+        "warnings",
+        [],
+    )
+
+    for warning in warnings:
+        st.warning(
+            warning
+        )
+
+    st.subheader(
+        "Before and After"
+    )
+
+    before_col, after_col = st.columns(2)
+
+    with before_col:
+        st.write(
+            "### Before"
+        )
+        st.text_area(
+            "Original section",
+            value=result.get(
+                "original_text",
+                "",
+            ),
+            height=350,
+            disabled=True,
+            key="section_improver_before",
+        )
+
+    with after_col:
+        st.write(
+            "### After"
+        )
+        improved_text = st.text_area(
+            "Improved section",
+            value=result.get(
+                "improved_text",
+                "",
+            ),
+            height=350,
+            key="section_improver_after",
+        )
+
+    explanation = result.get(
+        "explanation",
+        "",
+    )
+
+    if explanation:
+        st.subheader(
+            "Why It Changed"
+        )
+        st.info(
+            explanation
+        )
+
+    changes_made = result.get(
+        "changes_made",
+        [],
+    )
+
+    if changes_made:
+        st.subheader(
+            "Changes Made"
+        )
+
+        for index, change in enumerate(
+            changes_made,
+            start=1,
+        ):
+            st.write(
+                f"**{index}.** {change}"
+            )
+
+    st.download_button(
+        "Download Improved Section",
+        data=improved_text.encode(
+            "utf-8"
+        ),
+        file_name=(
+            "improved_cv_section.txt"
+        ),
+        mime="text/plain",
+        use_container_width=True,
+        key="download_improved_cv_section",
+    )
+
+    st.warning(
+        "Review every sentence. Keep only statements that are "
+        "fully accurate and supported by your real experience."
     )
