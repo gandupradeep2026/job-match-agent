@@ -21,3 +21,12 @@ backups/
 # Application logs
 logs/
 *.log
+
+# Test cache
+.pytest_cache/
+
+# User uploads
+uploads/
+
+# Streamlit secrets
+.streamlit/secrets.toml

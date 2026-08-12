@@ -146,6 +146,26 @@ class CoverLetterResult(BaseModel):
 
 
 # ==================================================
+# CV-SECTION IMPROVEMENT MODEL
+# ==================================================
+class CVSectionImprovementResult(BaseModel):
+    """
+    A truthful improvement of one selected CV section.
+    """
+
+    section_name: str = ""
+    original_text: str = ""
+    improved_text: str = ""
+    explanation: str = ""
+    changes_made: list[str] = Field(
+        default_factory=list
+    )
+    warnings: list[str] = Field(
+        default_factory=list
+    )
+
+
+# ==================================================
 # TAILORED-CV MODEL
 # ==================================================
 class TailoredCVResult(BaseModel):
@@ -307,6 +327,76 @@ JSON schema:
 {job_text}
 
 --- END JOB DESCRIPTION ---
+""".strip()
+
+
+# ==================================================
+# CV-SECTION IMPROVEMENT PROMPT
+# ==================================================
+def build_cv_section_improvement_prompt(
+    cv_text: str,
+    job_text: str,
+    section_name: str,
+    section_text: str,
+    language: str,
+) -> str:
+    """
+    Build instructions for improving one CV section.
+    """
+
+    schema_text = json.dumps(
+        CVSectionImprovementResult.model_json_schema(),
+        indent=2,
+        ensure_ascii=False,
+    )
+
+    return f"""
+You are a careful CV editor.
+
+Improve only the selected CV section for the supplied job.
+
+Output language: {language}
+Selected section: {section_name}
+
+Critical rules:
+
+1. Use only facts already present in the original CV or selected section.
+2. Never invent experience, skills, projects, certifications,
+   achievements, dates, employers, education, language levels,
+   responsibilities, or numerical results.
+3. Do not add a job requirement unless it is genuinely supported
+   by the original CV.
+4. Preserve the meaning of the candidate's real background.
+5. Make the section clearer, more concise, ATS-readable, and more
+   relevant to the target job.
+6. Keep the original text unchanged in original_text.
+7. Put the revised version only in improved_text.
+8. Explain the important changes in explanation and changes_made.
+9. Put any uncertainty in warnings.
+10. Return only JSON matching the supplied schema.
+11. Do not include markdown outside the JSON.
+
+JSON schema:
+
+{schema_text}
+
+--- START ORIGINAL CV ---
+
+{cv_text}
+
+--- END ORIGINAL CV ---
+
+--- START JOB DESCRIPTION ---
+
+{job_text}
+
+--- END JOB DESCRIPTION ---
+
+--- START SELECTED SECTION ---
+
+{section_text}
+
+--- END SELECTED SECTION ---
 """.strip()
 
 
@@ -720,6 +810,98 @@ def generate_cover_letter(
         ) from error
 
     return cover_letter.model_dump()
+
+
+# ==================================================
+# CV-SECTION IMPROVEMENT
+# ==================================================
+def improve_cv_section(
+    cv_text: str,
+    job_text: str,
+    section_name: str,
+    section_text: str,
+    language: str,
+) -> dict:
+    """
+    Improve one CV section using the local Ollama model.
+    """
+
+    cleaned_cv_text = cv_text.strip()
+    cleaned_job_text = job_text.strip()
+    cleaned_section_name = section_name.strip()
+    cleaned_section_text = section_text.strip()
+
+    if not cleaned_cv_text:
+        raise ValueError(
+            "The CV text is empty."
+        )
+
+    if not cleaned_job_text:
+        raise ValueError(
+            "The job-description text is empty."
+        )
+
+    if not cleaned_section_name:
+        raise ValueError(
+            "The section name is required."
+        )
+
+    if not cleaned_section_text:
+        raise ValueError(
+            "The selected section text is empty."
+        )
+
+    if language not in {
+        "English",
+        "German",
+    }:
+        raise ValueError(
+            "The section language must be English or German."
+        )
+
+    response = chat(
+        model=get_ollama_model(),
+        messages=[
+            {
+                "role": "user",
+                "content": build_cv_section_improvement_prompt(
+                    cv_text=cleaned_cv_text,
+                    job_text=cleaned_job_text,
+                    section_name=cleaned_section_name,
+                    section_text=cleaned_section_text,
+                    language=language,
+                ),
+            }
+        ],
+        format=CVSectionImprovementResult.model_json_schema(),
+        options={
+            "temperature": 0.1,
+        },
+    )
+
+    response_text = (
+        response.message.content.strip()
+    )
+
+    if not response_text:
+        raise ValueError(
+            "The local AI returned an empty section improvement."
+        )
+
+    try:
+        result = (
+            CVSectionImprovementResult.model_validate_json(
+                response_text
+            )
+        )
+
+    except ValidationError as error:
+        raise ValueError(
+            "The local AI section improvement did not match "
+            "the required structure."
+        ) from error
+
+    return result.model_dump()
 
 
 # ==================================================
