@@ -1,0 +1,22 @@
+# After copying the Application Agent files into the project root:
+
+git status
+
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+
+python -m pytest -q
+
+streamlit run app.py --server.port 8502
+
+# After you verify the app works:
+git add app.py requirements.txt ui/application_agent.py \
+  services/application_browser.py \
+  services/application_answer_service.py \
+  services/application_review_launcher.py \
+  services/application_browser_runner.py \
+  tests/test_application_browser.py
+
+git commit -m "Add Application Agent with safe browser autofill"
+
+git push -u origin feature/application-agent

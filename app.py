@@ -21,6 +21,9 @@ from services.logging_service import (
 from ui.ai_recommendations import (
     render_ai_recommendations,
 )
+from ui.application_agent import (
+    render_application_agent,
+)
 from ui.analysis_results import (
     render_analysis_results,
 )
@@ -361,6 +364,7 @@ if saved_message:
     tracker_tab,
     dashboard_tab,
     job_portals_tab,
+    application_agent_tab,
     cloud_tab,
     settings_tab,
 ) = st.tabs(
@@ -369,6 +373,7 @@ if saved_message:
         "Application Tracker",
         "Dashboard",
         "Job Portals",
+        "Application Agent",
         "Google Sheets",
         "Settings",
     ]
@@ -1263,6 +1268,36 @@ with job_portals_tab:
     except Exception as error:
         st.error(
             "The Job Portals page could not be displayed."
+        )
+
+# ==================================================
+# APPLICATION AGENT TAB
+# ==================================================
+
+with application_agent_tab:
+    try:
+        render_application_agent(
+            logger=logger,
+        )
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Application Agent rendering failed."
+            ),
+            context={
+                "component": "application_agent",
+            },
+        )
+
+        st.error(
+            "The Application Agent could not be displayed."
+        )
+
+        st.code(
+            f"{type(error).__name__}: {error}"
         )
 
 
