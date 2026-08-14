@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from market_intelligence.models import JobMarketRecord
+from market_intelligence.metadata_quality import JobMetadataNormalizer
 
 
 @dataclass
@@ -95,6 +96,33 @@ class MarketCollectionFilter:
                 not in allowed_countries
             ):
                 return False
+
+            # Germany market guard:
+            # reject jobs labeled Germany when their concrete
+            # location resolves only to another country.
+            if (
+                job_country == "germany"
+                and "germany" in allowed_countries
+            ):
+                location_country = (
+                    JobMetadataNormalizer
+                    ._infer_country_from_location(
+                        job.location
+                    )
+                )
+
+                normalized_location_country = (
+                    self._normalize(
+                        location_country
+                    )
+                )
+
+                if (
+                    normalized_location_country
+                    and normalized_location_country
+                    != "germany"
+                ):
+                    return False
 
         # ==================================================
         # JOB FAMILY

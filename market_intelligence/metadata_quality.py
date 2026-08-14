@@ -237,6 +237,56 @@ class JobMetadataNormalizer:
     ]
 
     # ======================================================
+    # FOREIGN LOCATION HINTS
+    # ======================================================
+
+    # These hints prevent concrete non-German locations from being
+    # mislabeled as Germany just because the job description happens
+    # to mention Germany somewhere.
+    FOREIGN_LOCATION_PATTERNS = {
+        "United States": [
+            r"\bwashington(?:\s*,?\s*d\.?c\.?)?\b",
+            r"\bdenver\b",
+            r"\bsan francisco\b",
+            r"\bnew york\b",
+            r"\bboston\b",
+            r"\bchicago\b",
+            r"\bseattle\b",
+            r"\baustin\b",
+            r"\barlington\s*,?\s*va\b",
+            r"\bcalifornia\b",
+            r"\bcolorado\b",
+            r"\btexas\b",
+            r"(?:^|[\s,;/()\-])ca(?:$|[\s,;/()\-])",
+            r"(?:^|[\s,;/()\-])co(?:$|[\s,;/()\-])",
+            r"(?:^|[\s,;/()\-])dc(?:$|[\s,;/()\-])",
+            r"(?:^|[\s,;/()\-])va(?:$|[\s,;/()\-])",
+        ],
+        "United Kingdom": [
+            r"\blondon\b",
+            r"\bengland\b",
+            r"\bscotland\b",
+            r"\bwales\b",
+        ],
+        "France": [r"\bparis\b"],
+        "Spain": [r"\bmadrid\b", r"\bbarcelona\b"],
+        "Netherlands": [r"\bamsterdam\b", r"\bha(a)?rlem\b"],
+        "Italy": [r"\bmilano\b", r"\bmilan\b", r"\brome\b"],
+        "Poland": [r"\bwarsaw\b"],
+        "Romania": [r"\biași\b", r"\biasi\b", r"\bbucharest\b"],
+    }
+
+    GENERIC_LOCATION_PATTERNS = [
+        r"^\s*$",
+        r"^\s*remote\s*$",
+        r"^\s*remote[-\s]?first\s*$",
+        r"^\s*home[-\s]?based\s*$",
+        r"^\s*hybrid\s*$",
+        r"^\s*multiple locations?\s*$",
+        r"^\s*various locations?\s*$",
+    ]
+
+    # ======================================================
     # SENIORITY
     # ======================================================
 
@@ -325,26 +375,90 @@ class JobMetadataNormalizer:
         )
 
     @classmethod
+    def _location_is_generic(
+        cls,
+        location: str,
+    ) -> bool:
+        location_text = (
+            location or ""
+        ).strip()
+
+        return any(
+            re.search(
+                pattern,
+                location_text,
+                flags=re.IGNORECASE,
+            )
+            for pattern in cls.GENERIC_LOCATION_PATTERNS
+        )
+
+    @classmethod
+    def _infer_country_from_location(
+        cls,
+        location: str,
+    ) -> str:
+        # Infer country from the location field only.
+        # If a multi-location vacancy explicitly includes Germany,
+        # keep it as a valid German-market vacancy.
+
+        location_text = (
+            location or ""
+        ).casefold()
+
+        if not location_text.strip():
+            return ""
+
+        explicit_countries = []
+
+        for pattern, country in cls.COUNTRY_PATTERNS:
+            if re.search(
+                pattern,
+                location_text,
+                flags=re.IGNORECASE,
+            ):
+                if country not in explicit_countries:
+                    explicit_countries.append(
+                        country
+                    )
+
+        if "Germany" in explicit_countries:
+            return "Germany"
+
+        if explicit_countries:
+            return explicit_countries[0]
+
+        for pattern in cls.GERMANY_LOCATION_PATTERNS:
+            if re.search(
+                pattern,
+                location_text,
+                flags=re.IGNORECASE,
+            ):
+                return "Germany"
+
+        for country, patterns in (
+            cls.FOREIGN_LOCATION_PATTERNS.items()
+        ):
+            for pattern in patterns:
+                if re.search(
+                    pattern,
+                    location_text,
+                    flags=re.IGNORECASE,
+                ):
+                    return country
+
+        return ""
+
+    @classmethod
     def infer_country(
         cls,
         explicit_country: str = "",
         location: str = "",
         description: str = "",
     ) -> str:
-        """
-        Determine canonical country.
-
-        Priority:
-
-            1. Explicit provider country/code
-            2. Country name in location
-            3. Recognized German city / DE marker
-            4. Country name in description
-
-        City inference is intentionally conservative and
-        currently focuses on Germany because that is the
-        active market being collected.
-        """
+        # Priority:
+        # 1. Explicit provider country/code
+        # 2. Concrete location evidence
+        # 3. Description fallback only for generic/blank locations
 
         explicit = (
             cls.normalize_explicit_country(
@@ -355,46 +469,25 @@ class JobMetadataNormalizer:
         if explicit:
             return explicit
 
-        location_text = (
-            location or ""
-        ).casefold()
+        location_country = (
+            cls._infer_country_from_location(
+                location
+            )
+        )
 
-        # --------------------------------------------------
-        # Explicit country name inside location
-        # --------------------------------------------------
-        for pattern, country in (
-            cls.COUNTRY_PATTERNS
+        if location_country:
+            return location_country
+
+        if not cls._location_is_generic(
+            location
         ):
-            if re.search(
-                pattern,
-                location_text,
-                flags=re.IGNORECASE,
-            ):
-                return country
+            return ""
 
-        # --------------------------------------------------
-        # German city / DE abbreviation
-        # --------------------------------------------------
-        for pattern in (
-            cls.GERMANY_LOCATION_PATTERNS
-        ):
-            if re.search(
-                pattern,
-                location_text,
-                flags=re.IGNORECASE,
-            ):
-                return "Germany"
-
-        # --------------------------------------------------
-        # Description fallback
-        # --------------------------------------------------
         description_text = (
             description or ""
         ).casefold()
 
-        for pattern, country in (
-            cls.COUNTRY_PATTERNS
-        ):
+        for pattern, country in cls.COUNTRY_PATTERNS:
             if re.search(
                 pattern,
                 description_text,

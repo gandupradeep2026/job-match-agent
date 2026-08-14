@@ -3,13 +3,10 @@
     "countries": [
       "Germany"
     ],
-    "job_families": [
-      "Data & Analytics"
-    ],
+    "job_families": [],
     "title_keywords": [],
     "excluded_title_keywords": []
   },
-
   "sources": [
     {
       "provider": "greenhouse",
@@ -59,7 +56,6 @@
       "company": "A11",
       "enabled": true
     },
-
     {
       "provider": "greenhouse",
       "board": "awin",
@@ -102,7 +98,6 @@
       "company": "ICE",
       "enabled": true
     },
-
     {
       "provider": "lever",
       "site": "trustyou",
@@ -131,7 +126,6 @@
       "instance": "global",
       "enabled": true
     },
-
     {
       "provider": "lever",
       "site": "qonto",
@@ -160,7 +154,6 @@
       "instance": "global",
       "enabled": true
     },
-
     {
       "provider": "lever",
       "site": "kraken123",

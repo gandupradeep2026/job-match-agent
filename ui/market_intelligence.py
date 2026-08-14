@@ -7,8 +7,17 @@ from market_intelligence.cv_market_comparator import CVMarketComparator
 from market_intelligence.cv_skill_bridge import CVSkillBridge
 from market_intelligence.database import JobMarketDatabase
 from market_intelligence.job_ranker import JobRanker
+from market_intelligence.market_taxonomy import (
+    classify_market_job,
+    subcategories_for_family,
+    supported_market_families,
+)
 from market_intelligence.skill_gap import SkillGapPrioritizer
 from market_intelligence.statistics import MarketStatisticsEngine
+from market_intelligence.technology_filter import (
+    available_technologies,
+    filter_jobs_by_technology,
+)
 from market_intelligence.trend_analysis import MarketTrendAnalyzer
 from ui.market_refresh import render_market_refresh
 from ui.snapshot_trends import render_snapshot_trends
@@ -68,15 +77,156 @@ def _get_filter_options(
         }
     )
 
-    job_families = sorted(
-        {
-            job.job_family
-            for job in jobs
-            if job.job_family.strip()
-        }
-    )
+    # Show the complete supported market taxonomy instead of
+    # only families already present in the current local DB.
+    job_families = supported_market_families()
 
     return countries, job_families
+
+
+def _market_classification(
+    job,
+):
+    return classify_market_job(
+        job_title=job.job_title,
+        description=job.description,
+        legacy_job_family=job.job_family,
+        legacy_occupation=job.occupation,
+    )
+
+
+def _filter_market_jobs(
+    jobs,
+    country: Optional[str] = None,
+    market_family: Optional[str] = None,
+    subcategory: Optional[str] = None,
+):
+    filtered = []
+
+    for job in jobs:
+        if (
+            country
+            and job.country.casefold()
+            != country.casefold()
+        ):
+            continue
+
+        classification = (
+            _market_classification(
+                job
+            )
+        )
+
+        if (
+            market_family
+            and classification.job_family.casefold()
+            != market_family.casefold()
+        ):
+            continue
+
+        if (
+            subcategory
+            and classification.subcategory.casefold()
+            != subcategory.casefold()
+        ):
+            continue
+
+        filtered.append(
+            job
+        )
+
+    return filtered
+
+
+class _FilteredJobMarketDatabase:
+    # Read-only analytics view over a filtered list of jobs.
+    def __init__(
+        self,
+        source_database: JobMarketDatabase,
+        jobs,
+    ):
+        self.source_database = (
+            source_database
+        )
+
+        self.jobs = list(
+            jobs
+        )
+
+    def get_all_jobs(
+        self,
+        limit: Optional[int] = None,
+    ):
+        if limit is None:
+            return list(
+                self.jobs
+            )
+
+        return list(
+            self.jobs[:limit]
+        )
+
+    def __getattr__(
+        self,
+        name,
+    ):
+        return getattr(
+            self.source_database,
+            name,
+        )
+
+
+def _render_taxonomy_summary(
+    jobs,
+):
+    classifications = [
+        _market_classification(
+            job
+        )
+        for job in jobs
+    ]
+
+    col1, col2, col3, col4 = (
+        st.columns(4)
+    )
+
+    col1.metric(
+        "Jobs analysed",
+        len(jobs),
+    )
+
+    col2.metric(
+        "Companies",
+        len(
+            {
+                job.company.strip().casefold()
+                for job in jobs
+                if job.company.strip()
+            }
+        ),
+    )
+
+    col3.metric(
+        "Locations",
+        len(
+            {
+                job.location.strip().casefold()
+                for job in jobs
+                if job.location.strip()
+            }
+        ),
+    )
+
+    col4.metric(
+        "Roles",
+        len(
+            {
+                item.subcategory.casefold()
+                for item in classifications
+                if item.subcategory.strip()
+            }
+        ),
+    )
 
 
 # ==========================================================
@@ -971,12 +1121,6 @@ def render_market_intelligence_page():
 
     database = JobMarketDatabase()
 
-    statistics = (
-        MarketStatisticsEngine(
-            database
-        )
-    )
-
     all_jobs = database.get_all_jobs()
 
     if not all_jobs:
@@ -1015,7 +1159,7 @@ def render_market_intelligence_page():
         "Market Filters"
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
 
     selected_country = col1.selectbox(
         "Country",
@@ -1044,17 +1188,170 @@ def render_market_intelligence_page():
         else selected_country
     )
 
-    job_family = (
+    market_family = (
         None
         if selected_family
         == "All Job Families"
         else selected_family
     )
 
-    _render_summary(
-        statistics=statistics,
-        job_family=job_family,
-        country=country,
+    role_options = (
+        subcategories_for_family(
+            market_family
+        )
+        if market_family
+        else []
+    )
+
+    current_role = (
+        st.session_state.get(
+            "market_role_filter",
+            "All Roles",
+        )
+    )
+
+    if (
+        current_role != "All Roles"
+        and current_role
+        not in role_options
+    ):
+        st.session_state[
+            "market_role_filter"
+        ] = "All Roles"
+
+    selected_role = col3.selectbox(
+        "Job Role / Subcategory",
+        options=[
+            "All Roles",
+            *role_options,
+        ],
+        index=0,
+        disabled=(
+            market_family is None
+        ),
+        help=(
+            "Select a Job Family first. "
+            "The role list will then show "
+            "its subcategories."
+        ),
+        key="market_role_filter",
+    )
+
+    subcategory = (
+        None
+        if selected_role == "All Roles"
+        else selected_role
+    )
+
+    role_filtered_jobs = (
+        _filter_market_jobs(
+            jobs=all_jobs,
+            country=country,
+            market_family=market_family,
+            subcategory=subcategory,
+        )
+    )
+
+    technology_options = (
+        available_technologies(
+            role_filtered_jobs
+        )
+    )
+
+    current_technology = (
+        st.session_state.get(
+            "market_technology_filter",
+            "All Technologies / Skills",
+        )
+    )
+
+    if (
+        current_technology
+        != "All Technologies / Skills"
+        and current_technology
+        not in technology_options
+    ):
+        st.session_state[
+            "market_technology_filter"
+        ] = "All Technologies / Skills"
+
+    selected_technology = col4.selectbox(
+        "Technology / Skill",
+        options=[
+            "All Technologies / Skills",
+            *technology_options,
+        ],
+        index=0,
+        disabled=(
+            len(technology_options) == 0
+        ),
+        help=(
+            "Filter the selected market by an "
+            "extracted technology or skill, for example "
+            "Google Cloud Platform, AWS, BigQuery, Spark "
+            "or Terraform."
+        ),
+        key="market_technology_filter",
+    )
+
+    technology = (
+        None
+        if selected_technology
+        == "All Technologies / Skills"
+        else selected_technology
+    )
+
+    filtered_jobs = (
+        filter_jobs_by_technology(
+            role_filtered_jobs,
+            technology,
+        )
+    )
+
+    analysis_database = (
+        _FilteredJobMarketDatabase(
+            source_database=database,
+            jobs=filtered_jobs,
+        )
+    )
+
+    statistics = (
+        MarketStatisticsEngine(
+            analysis_database
+        )
+    )
+
+    if market_family:
+        selected_market_text = (
+            market_family
+        )
+
+        if subcategory:
+            selected_market_text += (
+                f" -> {subcategory}"
+            )
+
+        if technology:
+            selected_market_text += (
+                f" -> {technology}"
+            )
+
+        st.caption(
+            "Selected market: "
+            f"{selected_market_text}"
+        )
+
+    if not filtered_jobs:
+        st.warning(
+            "No collected jobs currently match "
+            "this exact combination of country, "
+            "job family, role and technology/skill. "
+            "Try 'All Roles' or 'All Technologies / Skills' "
+            "to broaden the market."
+        )
+
+    _render_taxonomy_summary(
+        filtered_jobs
     )
 
     st.divider()
@@ -1084,16 +1381,16 @@ def render_market_intelligence_page():
 
         _render_top_skills(
             statistics=statistics,
-            job_family=job_family,
-            country=country,
+            job_family=None,
+            country=None,
         )
 
         st.divider()
 
         _render_market_breakdown(
             statistics=statistics,
-            job_family=job_family,
-            country=country,
+            job_family=None,
+            country=None,
         )
 
     # ======================================================
@@ -1189,7 +1486,7 @@ def render_market_intelligence_page():
         if candidate_skills:
 
             _render_personal_market_fit(
-                database=database,
+                database=analysis_database,
                 candidate_skills=(
                     candidate_skills
                 ),
@@ -1220,7 +1517,7 @@ def render_market_intelligence_page():
         if candidate_skills:
 
             _render_skill_gap(
-                database=database,
+                database=analysis_database,
                 candidate_skills=(
                     candidate_skills
                 ),
@@ -1251,7 +1548,7 @@ def render_market_intelligence_page():
         if candidate_skills:
 
             _render_job_ranking(
-                database=database,
+                database=analysis_database,
                 candidate_skills=(
                     candidate_skills
                 ),
