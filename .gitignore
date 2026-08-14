@@ -30,3 +30,19 @@ uploads/
 
 # Streamlit secrets
 .streamlit/secrets.toml
+
+# ==========================================================
+# Job Market Intelligence runtime data
+# ==========================================================
+database/**/*.db
+database/**/*.sqlite
+database/**/*.sqlite3
+
+# SQLite runtime files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Generated runtime data
+logs/
+uploads/

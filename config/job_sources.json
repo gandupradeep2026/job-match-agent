@@ -1,0 +1,172 @@
+{
+  "filters": {
+    "countries": [
+      "Germany"
+    ],
+    "job_families": [
+      "Data & Analytics"
+    ],
+    "title_keywords": [],
+    "excluded_title_keywords": []
+  },
+
+  "sources": [
+    {
+      "provider": "greenhouse",
+      "board": "thequalitygroupgmbh2",
+      "company": "The Quality Group",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "ultratendency",
+      "company": "Ultra Tendency",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "gropyus",
+      "company": "GROPYUS",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "planetlabs",
+      "company": "Planet",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "bluefishai",
+      "company": "Bluefish AI",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "moia",
+      "company": "MOIA",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "orcristtechnologies",
+      "company": "Orcrist Technologies",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "projectaservicesgmbhcokg",
+      "company": "A11",
+      "enabled": true
+    },
+
+    {
+      "provider": "greenhouse",
+      "board": "awin",
+      "company": "Awin",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "freenow",
+      "company": "FREENOW",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "vay",
+      "company": "Vay",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "blacklane",
+      "company": "BLACKLANE",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "ionos2",
+      "company": "IONOS",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "wunderflats",
+      "company": "Wunderflats",
+      "enabled": true
+    },
+    {
+      "provider": "greenhouse",
+      "board": "internationalcopyrightenterpriseservices",
+      "company": "ICE",
+      "enabled": true
+    },
+
+    {
+      "provider": "lever",
+      "site": "trustyou",
+      "company": "TrustYou",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "octoenergy",
+      "company": "Octopus Energy",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "netlight",
+      "company": "Netlight",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "finn",
+      "company": "FINN",
+      "instance": "global",
+      "enabled": true
+    },
+
+    {
+      "provider": "lever",
+      "site": "qonto",
+      "company": "Qonto",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "yuno",
+      "company": "Yuno",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "pipedrive",
+      "company": "Pipedrive",
+      "instance": "global",
+      "enabled": true
+    },
+    {
+      "provider": "lever",
+      "site": "shopback-2",
+      "company": "ShopBack",
+      "instance": "global",
+      "enabled": true
+    },
+
+    {
+      "provider": "lever",
+      "site": "kraken123",
+      "company": "Kraken",
+      "instance": "global",
+      "enabled": false
+    }
+  ]
+}

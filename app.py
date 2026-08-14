@@ -1,4 +1,8 @@
 import streamlit as st
+
+from market_intelligence.job_ingestion_bridge import (
+    AnalysedJobMarketIngestor,
+)
 from ui.job_portals import (
     render_job_portals,
 )
@@ -56,6 +60,9 @@ from ui.job_input import (
 )
 from ui.job_insights import (
     render_job_insights,
+)
+from ui.market_intelligence import (
+    render_market_intelligence_page,
 )
 from ui.settings_page import (
     render_settings_page,
@@ -365,6 +372,7 @@ if saved_message:
     dashboard_tab,
     job_portals_tab,
     application_agent_tab,
+    market_intelligence_tab,
     cloud_tab,
     settings_tab,
 ) = st.tabs(
@@ -374,6 +382,7 @@ if saved_message:
         "Dashboard",
         "Job Portals",
         "Application Agent",
+        "📊 Market Intelligence",
         "Google Sheets",
         "Settings",
     ]
@@ -738,6 +747,131 @@ with analysis_tab:
                 or {}
             )
 
+            # --------------------------------------
+            # ADD ANALYSED JOB TO MARKET DATABASE
+            # --------------------------------------
+            try:
+                market_ingestor = (
+                    AnalysedJobMarketIngestor()
+                )
+
+                market_ingestion_result = (
+                    market_ingestor.ingest(
+                        job_text=final_job_text,
+                        extracted_job_details=(
+                            extracted_details
+                        ),
+                        imported_job_url=(
+                            imported_job_url
+                        ),
+                        source_method=(
+                            job_input_method
+                        ),
+                    )
+                )
+
+                if market_ingestion_result.inserted:
+                    market_ingestion_status = (
+                        "inserted"
+                    )
+                elif market_ingestion_result.duplicate:
+                    market_ingestion_status = (
+                        "duplicate"
+                    )
+                else:
+                    market_ingestion_status = (
+                        "not_inserted"
+                    )
+
+                st.session_state[
+                    "market_job_ingestion"
+                ] = {
+                    "status": (
+                        market_ingestion_status
+                    ),
+                    "job_id": (
+                        market_ingestion_result.job_id
+                    ),
+                    "job_title": (
+                        market_ingestion_result.job_title
+                    ),
+                    "company": (
+                        market_ingestion_result.company
+                    ),
+                    "source_url": (
+                        market_ingestion_result.source_url
+                    ),
+                    "message": (
+                        market_ingestion_result.message
+                    ),
+                }
+
+                log_event(
+                    logger=logger,
+                    message=(
+                        "Analysed job processed for "
+                        "Market Intelligence."
+                    ),
+                    context={
+                        "market_ingestion_status": (
+                            market_ingestion_status
+                        ),
+                        "market_job_id": (
+                            market_ingestion_result.job_id
+                        ),
+                        "job_title": (
+                            market_ingestion_result.job_title
+                        ),
+                        "company": (
+                            market_ingestion_result.company
+                        ),
+                    },
+                )
+
+            except Exception as market_error:
+                st.session_state[
+                    "market_job_ingestion"
+                ] = {
+                    "status": "error",
+                    "job_id": None,
+                    "job_title": (
+                        extracted_details.get(
+                            "job_title",
+                            "",
+                        )
+                    ),
+                    "company": (
+                        extracted_details.get(
+                            "company",
+                            "",
+                        )
+                    ),
+                    "source_url": (
+                        imported_job_url or ""
+                    ),
+                    "message": (
+                        f"{type(market_error).__name__}: "
+                        f"{market_error}"
+                    ),
+                }
+
+                log_exception(
+                    logger=logger,
+                    error=market_error,
+                    message=(
+                        "Analysed job could not be added "
+                        "to Market Intelligence."
+                    ),
+                    context={
+                        "job_input_method": (
+                            job_input_method
+                        ),
+                        "imported_job_url": (
+                            imported_job_url
+                        ),
+                    },
+                )
+
             log_event(
                 logger=logger,
                 message=(
@@ -801,6 +935,50 @@ with analysis_tab:
             st.success(
                 "Analysis completed successfully."
             )
+
+            market_ingestion_state = (
+                st.session_state.get(
+                    "market_job_ingestion",
+                    {},
+                )
+                or {}
+            )
+
+            market_status = (
+                market_ingestion_state.get(
+                    "status",
+                    "",
+                )
+            )
+
+            if market_status == "inserted":
+                market_title = (
+                    market_ingestion_state.get(
+                        "job_title",
+                        "",
+                    )
+                    or "Job"
+                )
+
+                st.success(
+                    f"Market Intelligence: {market_title} "
+                    "was added to the market database."
+                )
+
+            elif market_status == "duplicate":
+                st.info(
+                    "Market Intelligence: this job already "
+                    "exists in the market database, so it "
+                    "was not added again."
+                )
+
+            elif market_status == "error":
+                st.warning(
+                    "The job analysis completed, but the job "
+                    "could not be added to the Market "
+                    "Intelligence database. See Settings → "
+                    "Logs for diagnostic information."
+                )
 
         except Exception as error:
             log_exception(
@@ -1294,6 +1472,34 @@ with application_agent_tab:
 
         st.error(
             "The Application Agent could not be displayed."
+        )
+
+        st.code(
+            f"{type(error).__name__}: {error}"
+        )
+
+
+# ==================================================
+# MARKET INTELLIGENCE TAB
+# ==================================================
+with market_intelligence_tab:
+    try:
+        render_market_intelligence_page()
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Market Intelligence rendering failed."
+            ),
+            context={
+                "component": "market_intelligence",
+            },
+        )
+
+        st.error(
+            "The Market Intelligence page could not be displayed."
         )
 
         st.code(
