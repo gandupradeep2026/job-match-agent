@@ -156,6 +156,15 @@ def add_missing_columns(
         "application_source": "TEXT",
         "cv_version": "TEXT",
         "cover_letter_version": "TEXT",
+        "target_company_id": "INTEGER",
+        "career_target_role": "TEXT",
+        "preparation_stage": "TEXT",
+        "tailored_cv_ready": "INTEGER",
+        "interview_pack_ready": "INTEGER",
+        "interview_pack_language": "TEXT",
+        "career_next_action": "TEXT",
+        "career_notes": "TEXT",
+        "last_career_sync_at": "TEXT",
     }
 
     for column_name, column_type in (

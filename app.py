@@ -37,6 +37,9 @@ from ui.application_form import (
 from ui.category_scores import (
     render_category_scores,
 )
+from ui.career_profile import (
+    render_career_profile_page,
+)
 from ui.cover_letter_generator import (
     render_cover_letter_generator,
 )
@@ -372,6 +375,7 @@ if saved_message:
     dashboard_tab,
     job_portals_tab,
     application_agent_tab,
+    career_tab,
     market_intelligence_tab,
     cloud_tab,
     settings_tab,
@@ -382,6 +386,7 @@ if saved_message:
         "Dashboard",
         "Job Portals",
         "Application Agent",
+        "💼 Career Preparation",
         "📊 Market Intelligence",
         "Google Sheets",
         "Settings",
@@ -1472,6 +1477,35 @@ with application_agent_tab:
 
         st.error(
             "The Application Agent could not be displayed."
+        )
+
+        st.code(
+            f"{type(error).__name__}: {error}"
+        )
+
+
+
+# ==================================================
+# CAREER PREPARATION TAB
+# ==================================================
+with career_tab:
+    try:
+        render_career_profile_page()
+
+    except Exception as error:
+        log_exception(
+            logger=logger,
+            error=error,
+            message=(
+                "Career Preparation rendering failed."
+            ),
+            context={
+                "component": "career_preparation",
+            },
+        )
+
+        st.error(
+            "The Career Preparation page could not be displayed."
         )
 
         st.code(
